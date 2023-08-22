@@ -1,0 +1,15 @@
+@def READ 1
+@def WRITE 2
+@def NOTE 3
+
+namespace file {
+    class stream {
+    public:
+        string directory;
+        stream(string _directory, i8 mode = 0): directory(_directory) {
+
+        }
+        ...
+    };
+    ...
+}

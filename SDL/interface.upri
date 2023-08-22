@@ -1,0 +1,15 @@
+@def STRING char*
+
+namespace shell {
+    fn log(STRING format, ...) {
+
+    }: 0;
+
+    fn write(STRING format, ...) {
+
+    }: 0;
+
+    fn note(STRING format, ...) {
+
+    }: 0;
+}

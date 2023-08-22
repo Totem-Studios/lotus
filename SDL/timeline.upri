@@ -1,0 +1,5 @@
+namespace chrono {
+    class clock {
+
+    }
+}

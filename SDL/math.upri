@@ -5,6 +5,10 @@ namespace math {
     @def pi_8 3.14159265
     @def pi_10 3.1415926535
     ...
+    fn lg_n() {
+        ...
+    }
+
     fn lg_2() {
         ...
     }

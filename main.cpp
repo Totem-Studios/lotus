@@ -9,7 +9,12 @@
 #include "resources/token.h"
 
 class Preprocessor {
-    std::string get_use(char buffer[], std::streamsize *index) {
+    typedef struct {
+        std::string macro, value;
+    } definition;
+    std::vector<definition> definitions;
+    std::vector<char> all_unique_utils;
+    static std::string get_use(char buffer[], std::streamsize *index) {
         std::string usage_directory;
         while(!isalnum(buffer[*index])) {
             if(!isspace(buffer[*index])) {
@@ -38,6 +43,32 @@ class Preprocessor {
             std::cerr << "builtin utility undefined\n";
             exit(1);
         }
+    }
+
+    static definition get_def(char buffer[], std::streamsize *index) {
+        definition def;
+        while(!isalnum(buffer[*index])) {
+            if(!isspace(buffer[*index])) {
+                std::cerr << "syntax error: 'def' directive expects spacing: ' ', and then a definition starting with an alpha character (letter), not: " << buffer[*index] << "\n";
+            }
+            ++*index;
+        }
+        while(buffer[*index] != '\n' && (isalnum(buffer[*index]) || buffer[*index] == '_')) {
+            def.macro+=buffer[*index];
+            ++*index;
+        }
+
+        while(!isalnum(buffer[*index])) {
+            if(!isspace(buffer[*index])) {
+                std::cerr << "syntax error: when defining a macro the macro should be followed by a spacing: ' ', later a alpha character (letter), not: " << buffer[*index] << "\n";
+            }
+            ++*index;
+        }
+        while(!isspace(buffer[*index])) {
+            def.value+=buffer[*index];
+            ++*index;
+        }
+        return def;
     }
 
     std::string get_selective_use(char buffer[], std::streamsize *index) {
@@ -91,7 +122,15 @@ class Preprocessor {
                     } else if(directive == "force") {
 
                     } else if(directive == "def") {
-
+                        definition def = get_def(buffer, &i);
+                        bool isDefined = false;
+                        for(const definition& d : definitions) {
+                            if(d.macro == def.macro && d.value == def.value) {
+                                std::cerr << "syntax error: defintion of macro encountered > 1 time(s): @def" << def.macro << " " << def.value << "\n";
+                                isDefined = true;
+                            }
+                        }
+                        if(!isDefined) definitions.emplace_back(def);
                     } else {
                         std::cerr << "undefined preprocessor-directive" << std::endl;
                         exit(1);
@@ -114,6 +153,7 @@ public:
         stream.read(buffer, pFileSize);
         stream.close();
 
+        //expand_macros(buffer, pFileSize);
         process(buffer, pFileSize);
 
         for(const char& c : content) {
@@ -183,6 +223,26 @@ public:
                     tokens.emplace_back(token{TOK_COLON, ":"});
                 } else if(content[i] == ';') {
                     tokens.emplace_back(token{TOK_SEMICOLON, ";"});
+                } else if(content[i] == '\"') {
+                    lexeme+=content[i++];
+                    do {
+                        if(content[i] == '\\') {
+                            lexeme+=content[i++];
+                        }
+                        lexeme+=content[i];
+                    } while(content[i++] != '\"');
+                    tokens.emplace_back(token{TOK_STR_LIT, lexeme});
+                    lexeme.clear();
+                } else if(content[i] == '\'') {
+                    lexeme+=content[i++];
+                    do {
+                        if(content[i] == '\\') {
+                            lexeme+=content[i++];
+                        }
+                        lexeme+=content[i];
+                    } while(content[i++] != '\'');
+                    tokens.emplace_back(token{TOK_CHAR_LIT, lexeme});
+                    lexeme.clear();
                 }
             } else {
                 std::cerr << "syntax error: unprocessable character: " << content[i] << "\n";

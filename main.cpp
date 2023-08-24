@@ -7,6 +7,7 @@
 
 #include "resources/config.h"
 #include "resources/token.h"
+#include "resources/node.h"
 
 class Preprocessor {
     typedef struct {
@@ -18,7 +19,7 @@ class Preprocessor {
         std::string usage_directory;
         while(!isalnum(buffer[*index])) {
             if(!isspace(buffer[*index])) {
-                std::cerr << "syntax error: 'use' directive expects spacing: ' ', and then a utility starting with an alpha character (letter), not: " << buffer[*index] << "\n";
+                std::cerr << "\nsyntax error: 'use' directive expects spacing: ' ', and then a utility starting with an alpha character (letter), not: " << buffer[*index] << "\n";
             }
             ++*index;
         }
@@ -71,7 +72,7 @@ class Preprocessor {
         return def;
     }
 
-    std::string get_selective_use(char buffer[], std::streamsize *index) {
+    static std::string get_selective_use(char buffer[], std::streamsize *index) {
         std::string selective_part;
         while(isalnum(buffer[*index]) || buffer[*index] == '_') {
             selective_part+=buffer[*index];
@@ -106,10 +107,13 @@ class Preprocessor {
                         if(!usage_directory) {std::cerr << "failed to open utility directory"; exit(1);}
                         while(isspace(buffer[i]) && buffer[i] != '\n' && buffer[i] != ':') ++i;
                         if(buffer[i] == '\n') {
+                            added_file_rows++;
                             while(usage_directory.peek() != EOF) {
+                                if(usage_directory.peek() == '\n') added_file_rows++;
                                 content.push_back(static_cast<char>(usage_directory.get()));
                             }
                             content.push_back('\n');
+                            added_file_rows++;
                         } else if(buffer[i] == ':'){
                             get_selective_use(buffer, &i);
                         } else {
@@ -126,7 +130,7 @@ class Preprocessor {
                         bool isDefined = false;
                         for(const definition& d : definitions) {
                             if(d.macro == def.macro && d.value == def.value) {
-                                std::cerr << "syntax error: defintion of macro encountered > 1 time(s): @def" << def.macro << " " << def.value << "\n";
+                                std::cerr << "syntax error: definition of macro encountered > 1 time(s): @def" << def.macro << " " << def.value << "\n";
                                 isDefined = true;
                             }
                         }
@@ -144,6 +148,7 @@ class Preprocessor {
         }
     }
 public:
+    size_t added_file_rows = 0;
     std::vector<char> content;
     explicit Preprocessor(std::string& directory) {
         std::ifstream stream(directory, std::ios::binary | std::ios::ate);
@@ -153,13 +158,14 @@ public:
         stream.read(buffer, pFileSize);
         stream.close();
 
-        //expand_macros(buffer, pFileSize);
         process(buffer, pFileSize);
 
         for(const char& c : content) {
             std::cout << c;
         }
     }
+
+    ~Preprocessor() = default;
 };
 
 class Lexer {
@@ -168,7 +174,7 @@ public:
     explicit Lexer(const std::vector<char>& content) {
         unsigned int row = 1, index = 1;
         std::string lexeme;
-        for(size_t i = 0; i < content.size(); ++i) {
+        for(size_t i = 0; i < content.size(); i++) {
             if(isspace(content[i])) {
                 if(content[i] == '\n') {
                     row++;
@@ -176,32 +182,44 @@ public:
                 }
                 continue;
             } else if(isalpha(content[i])) {
-                lexeme+=content[i];
-                while(isalnum(content[i+1]) || content[i+1] == '_') {
-                    i++;
-                    lexeme+=content[i];
+                while(isalnum(content[i]) || content[i] == '_') {
+                    lexeme+=content[i++];
                 }
+                i--;
                 tokens.emplace_back(token{match_token(lexeme), lexeme});
                 lexeme.clear();
             } else if (isdigit(content[i])) {
-                lexeme += content[i++];
-                while (isdigit(content[i])) {
-                    lexeme += content[i++];
+                while(isdigit(content[i])) {
+                    lexeme+=content[i];
+                    i++;
                 }
-                if (content[i] == '.' && isdigit(content[i + 1])) {
-                    lexeme += content[i++];
-                    while (isdigit(content[i])) {
-                        lexeme += content[i++];
+                i--;
+                if(isspace(content[i])) {
+                    tokens.emplace_back(token{TOK_INTEGER_LIT, lexeme});
+                    lexeme.clear();
+                } else if(content[i+1] == '.' && isdigit(content[i+2])) {
+                    lexeme+=content[++i]; i++;
+                    while(isdigit(content[i])) {
+                        lexeme+=content[i];
+                        i++;
                     }
-                    tokens.emplace_back(token{TOK_DECIMAL_LIT, lexeme});
+                    i--;
+                    tokens.emplace_back(token{TOK_RATIONAL_LIT, lexeme});
+                    lexeme.clear();
+                } else if(content[i+1] == '.' && !isdigit(content[i+2])) {
+                    std::cerr << "\nsyntax error: " << row << "|" << index << "\n"
+                              << "\trational literal: " << lexeme << ". cannot terminate with alpha character (letter), must be digit\n";
+                    tokens.emplace_back(token{TOK_INTEGER_LIT, lexeme});
+                    lexeme.clear();
+                } else if(isalpha(content[i+1])) {
+                    std::cerr << "\nsyntax error: " << row << "|" << index << "\n"
+                              << "\tinteger literal: " << lexeme << " cannot terminate with alpha character (letter)\n";
+                    tokens.emplace_back(token{TOK_INTEGER_LIT, lexeme});
+                    lexeme.clear();
                 } else {
-                    if(lexeme.length() > 1) {
-                        tokens.emplace_back(token{TOK_NUM_LIT, lexeme});
-                    } else {
-                        tokens.emplace_back(token{TOK_DIG_LIT, lexeme});
-                    }
+                    tokens.emplace_back(token{TOK_INTEGER_LIT, lexeme});
+                    lexeme.clear();
                 }
-                lexeme.clear();
             } else if(isprint(content[i])) {
                 if(content[i] == '(') {
                     tokens.emplace_back(token{TOK_LPAREN, "("});
@@ -216,47 +234,213 @@ public:
                 } else if(content[i] == ']') {
                     tokens.emplace_back(token{TOK_RBRACKET, "]"});
                 } else if(content[i] == '.') {
-                    tokens.emplace_back(token{TOK_DOT, "."});
+                    if(content[i+1] == '.' && content[i+2] == '.') {
+                        tokens.emplace_back(token{TOK_SEQUENCE_SPECIFIER, "..."});
+                        i+=2;
+                    } else {
+                        tokens.emplace_back(token{TOK_DOT, "."});
+                    }
                 } else if(content[i] == ',') {
                     tokens.emplace_back(token{TOK_COMMA, ","});
                 } else if(content[i] == ':') {
-                    tokens.emplace_back(token{TOK_COLON, ":"});
+                    if(content[i+1] == ':') {
+                        tokens.emplace_back(token{TOK_NAMESPACE_ACC_SPECIFIER, "::"});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_COLON, ":"});
+                    }
                 } else if(content[i] == ';') {
                     tokens.emplace_back(token{TOK_SEMICOLON, ";"});
                 } else if(content[i] == '\"') {
-                    lexeme+=content[i++];
-                    do {
+                    lexeme+="\""; i++;
+                    while(i < content.size() && content[i] != '\"') {
                         if(content[i] == '\\') {
                             lexeme+=content[i++];
                         }
-                        lexeme+=content[i];
-                    } while(content[i++] != '\"');
+                        lexeme+=content[i++];
+                    }
+                    lexeme+=content[i];
+                    if(i >= content.size()) {
+                        std::cerr << "\nsyntax error: " << row << "|" << index << "\n"
+                                  << "\tunclosed string literal: " << lexeme << "\n";
+                    }
                     tokens.emplace_back(token{TOK_STR_LIT, lexeme});
                     lexeme.clear();
                 } else if(content[i] == '\'') {
-                    lexeme+=content[i++];
-                    do {
+                    lexeme+="\'"; i++;
+                    while(i < content.size() && content[i] != '\'') {
                         if(content[i] == '\\') {
                             lexeme+=content[i++];
                         }
-                        lexeme+=content[i];
-                    } while(content[i++] != '\'');
-                    tokens.emplace_back(token{TOK_CHAR_LIT, lexeme});
+                        lexeme+=content[i++];
+                    }
+                    lexeme+=content[i];
+
+                    if(lexeme.length() > 4) {
+                        if(i >= content.size()) {
+                            std::cerr << "\nsyntax error: " << row << "|" << index << "\n"
+                                      << "\tunclosed string literal: " << lexeme << "\n";
+                            tokens.emplace_back(token{TOK_STR_LIT, lexeme});
+                            lexeme.clear();
+                        } else {
+                            tokens.emplace_back(token{TOK_STR_LIT, lexeme});
+                            lexeme.clear();
+                        }
+                    } else {
+                        if(i >= content.size()) {
+                            std::cerr << "\nsyntax error: " << row << "|" << index << "\n"
+                                      << "\tunclosed character literal: " << lexeme << "\n";
+                            tokens.emplace_back(token{TOK_CHAR_LIT, lexeme});
+                            lexeme.clear();
+                        } else {
+                            tokens.emplace_back(token{TOK_CHAR_LIT, lexeme});
+                            lexeme.clear();
+                        }
+                    }
+
+                } else if(content[i] == '_') {
+                    while(isalnum(content[i]) || content[i] == '_') {
+                        lexeme+=content[i++];
+                    }
+                    i--;
+                    tokens.emplace_back(token{match_token(lexeme), lexeme});
                     lexeme.clear();
+                } else if(content[i] == '=') {
+                    if(content[i+1] == '=') {
+                        tokens.emplace_back(token{TOK_LOGICAL_COMP, "=="});
+                        i++;
+                    } else if(content[i+1] == '=' && content[i+2] == '=') {
+                        tokens.emplace_back(token{TOK_LOGICAL_FULLCOMP, "==="});
+                        i+=2;
+                    } else {
+                        tokens.emplace_back(token{TOK_EQ, "="});
+                    }
+                } else if(content[i] == '+') {
+                    if(content[i+1] == '+') {
+                        tokens.emplace_back(token{TOK_INC1_OP, "++"});
+                        i++;
+                    } else if(content[i+1] == '=') {
+                        tokens.emplace_back(token{TOK_INC_OP, "+="});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_PLUS, "+"});
+                    }
+                } else if(content[i] == '-') {
+                    if(content[i+1] == '>') {
+                        tokens.emplace_back(token{TOK_MEMBER_DEREFERENCE_OP, "->"});
+                        i++;
+                    } else if(content[i+1] == '-') {
+                        tokens.emplace_back(token{TOK_DEC1_OP, "--"});
+                        i++;
+                    } else if(content[i+1] == '=') {
+                        tokens.emplace_back(token{TOK_DEC_OP, "-="});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_MINUS, "-"});
+                    }
+                } else if(content[i] == '*') {
+                    if(content[i+1] == '*') {
+                        tokens.emplace_back(token{TOK_SQR_OP, "**"});
+                        i++;
+                    } else if(content[i+1] == '=') {
+                        tokens.emplace_back(token{TOK_MUL_OP, "*="});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_ASTRIKS, "*"});
+                    }
+                } else if(content[i] == '|') {
+                    if(content[i+1] == '|') {
+                        tokens.emplace_back(token{TOK_LOGIC_OR_OP, "||"});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_OR_OP, "|"});
+                    }
+                } else if(content[i] == '^') {
+                    tokens.emplace_back(token{TOK_SQR_OP, "^"});
+                } else if(content[i] == '~') {
+                    tokens.emplace_back(token{TOK_DESTRUCTOR_SPECIFIER, "~"});
+                } else if(content[i] == '&') {
+                    if (content[i + 1] == '&') {
+                        tokens.emplace_back(token{TOK_LOGIC_AND_OP, "&&"});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_REFERENCE, "&"});
+                    }
+                } else if(content[i] == '!') {
+                    if (content[i + 1] == '=') {
+                        tokens.emplace_back(token{TOK_LOGIC_NOT_COMP, "!="});
+                        i++;
+                    } else if (content[i + 1] == '=' && content[i + 2] == '=') {
+                        tokens.emplace_back(token{TOK_LOGIC_NOT_FULLCOMP, "!=="});
+                        i+=2;
+                    } else {
+                        tokens.emplace_back(token{TOK_LOGIC_NOT, "!"});
+                    }
+                } else if(content[i] == '<') {
+                    if (content[i + 1] == '=') {
+                        tokens.emplace_back(token{TOK_SMALLER_THAN_COMP, "<="});
+                        i++;
+                    } else if (content[i + 1] == '=' && content[i + 2] == '=') {
+                        tokens.emplace_back(token{TOK_SMALLER_THAN_FULLCOMP, "<=="});
+                        i+=2;
+                    } else if (content[i + 1] == '<') {
+                        tokens.emplace_back(token{TOK_LOGICAL_BITSHIFT_L, "<<"});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_SMALLER_THAN, "<"});
+                    }
+                } else if(content[i] == '>') {
+                    if (content[i + 1] == '=') {
+                        tokens.emplace_back(token{TOK_BIGGER_THAN_COMP, ">="});
+                        i++;
+                    } else if (content[i + 1] == '=' && content[i + 2] == '=') {
+                        tokens.emplace_back(token{TOK_BIGGER_THAN_FULLCOMP, ">=="});
+                        i+=2;
+                    } else if (content[i + 1] == '>') {
+                        tokens.emplace_back(token{TOK_LOGICAL_BITSHIFT_R, ">>"});
+                        i++;
+                    } else {
+                        tokens.emplace_back(token{TOK_BIGGER_THAN, ">"});
+                    }
+                } else {
+                    tokens.emplace_back(token{TOK_UNKNOWN, std::to_string(content[i])});
+                    //WARNING: this character is unknown
                 }
             } else {
-                std::cerr << "syntax error: unprocessable character: " << content[i] << "\n";
+                std::cerr << "\nsyntax error: " << row << "|" << index << "\n"
+                          << "\tunprocessable character: " << content[i++] << "\n";
             }
         }
-        std::cout << "\n\n\n";
-        for(const token& t : tokens) {
-            //std::cout << "{" << t.type << ", " << t.lexeme << "}" << "\n";
-            if(std::to_string(t.type).length() == 2) {
-                std::cout << t.type << " | " << t.lexeme << "\n";
-            } else {
-                std::cout << t.type << "  | " << t.lexeme << "\n";
-            }
+    }
+    ~Lexer() = default;
+};
+
+class Parser {
+    static std::vector<node> parse(const std::vector<token>& tokens) {
+        std::vector<node> program;
+        for(size_t i = 0; i < tokens.size(); i++) {
+
         }
+        return program;
+    }
+public:
+    node root;
+    explicit Parser(const std::vector<token>& tokens) {
+        root.type = NODE_ROOT;
+        root.children = parse(tokens);
+    }
+
+    ~Parser() = default;
+};
+
+class Semantic_Analyzer {
+    static void analyze(const node& root) {
+        std::cout << "\n[program]:\n\n";
+        //Semantics below ->
+    }
+public:
+    explicit Semantic_Analyzer(const node& root) {
+        analyze(root);
     }
 };
 
@@ -265,53 +449,18 @@ int main() {
     // std::cin >> directory;
     Preprocessor preprocessor(directory);
     Lexer lexer(preprocessor.content);
+
+    std::cout << "\n\n\n";
+    for(const token& t : lexer.tokens) {
+        //std::cout << "{" << t.type << ", " << t.lexeme << "}" << "\n";
+        if(std::to_string(t.type).length() == 2) {
+            std::cout << t.type << " |  " << t.lexeme << "\n";
+        } else {
+            std::cout << t.type << "  |  " << t.lexeme << "\n";
+        }
+    }
+
+    Parser parser(lexer.tokens);
+    Semantic_Analyzer semantic_analyzer(parser.root);
     return 0;
 }
-
-/* issprint()
- *
- * if(content[i] == ';') {
-                    tokens.emplace_back(token{TOK_SEMICOLON, ";"});
-                } else if(content[i] == ':') {
-                    tokens.emplace_back(token{TOK_COLON, ":"});
-                } else if(content[i] == '.') {
-                    lexeme+=".";
-                    if(isdigit(content[i+1])) {
-                        i++;
-                        tokens.emplace_back(token{TOK_DOT, "."});
-                        std::cerr << "syntax error: '.' modifier followed by digit: " << content[i] << "\n";
-                    } else if(content[i+1] == '.' && content[i+2] == '.') {
-                        i+=2;
-                        tokens.emplace_back(token{TOK_SEQUENCE_SPECIFIER, "..."});
-                    } else {
-                        tokens.emplace_back(token{TOK_DOT, "."});
-                    }
-                    lexeme.clear();
-                } else if(content[i] == ',') {
-                    tokens.emplace_back(token{TOK_COMMA, ","});
-                    lexeme.clear();
-                } else if(content[i] == '(') {
-                    tokens.emplace_back(token{TOK_LPAREN, "("});
-                    lexeme.clear();
-                } else if(content[i] == ')') {
-                    tokens.emplace_back(token{TOK_RPAREN, ")"});
-                    lexeme.clear();
-                } else if(content[i] == '[') {
-                    tokens.emplace_back(token{TOK_LBRACKET, "["});
-                    lexeme.clear();
-                } else if(content[i] == ']') {
-                    tokens.emplace_back(token{TOK_RBRACKET, "]"});
-                    lexeme.clear();
-                } else if(content[i] == '{') {
-                    tokens.emplace_back(token{TOK_LBRACE, "{"});
-                    lexeme.clear();
-                } else if(content[i] == '}') {
-                    tokens.emplace_back(token{TOK_RBRACE, "}"});
-                    lexeme.clear();
-                } else {
-                    tokens.emplace_back(token{TOK_COMMA, std::string(content[i], 1)});
-                    lexeme.clear();
-                }
- *
- *
- */

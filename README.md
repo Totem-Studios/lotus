@@ -3,14 +3,14 @@
   <img src="./docs/prime_logo.png" alt="Prime logo" height="70"> 
 </picture>
 
-# Prime: The Power of Simplicity
+# Lotus: The Power of Simplicity
 [Last updated: 2023-08-25]
 
-Prime is a type-safe compiled programming language designed to simplify the syntax of C++ and achieve memory safety using ownership and borrowing.
+Lotus is a type-safe compiled programming language designed to simplify the syntax of C++ and achieve memory safety using ownership and borrowing.
 
-The syntax of Prime is mainly C/C++ based however adding new features and "syntactic-sugar". The goal of the language is a more elegant approach to high-demand programming. In other words, Prime has a bias for systems programming.
+The syntax of Lotus is mainly C/C++ based however adding new features and "syntactic-sugar". The goal of the language is a more elegant approach to high-demand programming. In other words, Prime has a bias for systems programming.
 
-This repository contains the original compiler for Prime: Primec (Prime Compiler). It is not yet finished and offers minimal debugging support with unoptimized binary. It is incomplete, as can be said for the Prime SDL.
+This repository contains the original compiler for Lotus. It is not yet finished and offers minimal debugging support with unoptimized binary. It is incomplete, as can be said for the Prime SDL.
 
 | **Platform** | **Architecture** | **Status** |
 | ------------ | ---------------- | ---------- |
@@ -31,13 +31,13 @@ This repository contains the original compiler for Prime: Primec (Prime Compiler
 - [ ] LLVM Integration (in pipeline)
 - [ ] Support for Writing in Different Languages within Prime (upcoming)
 
-## Deep Dive into Prime
+## Deep Dive into Lotus
 
-To learn more about Prime, our comprehensive documentation is the perfect starting point. You can access it on our GitHub page: [Prime Documentation](https://github.com/BreakerLabs/primeLang).
+To learn more about Lotus, our comprehensive documentation is the perfect starting point. You can access it on our GitHub page: [Lotus Documentation](https://github.com/BreakerLabs/primeLang).
 
-## Prime for Visual Studio Code
+## Lotus for Visual Studio Code
 
-To enhance the experience of writing and debugging Prime code, we've developed a Visual Studio Code extension. You can access it here: [Prime VSCode Extension](https://github.com/BreakerLabs/Prime-Language-Support).
+To enhance the experience of writing and debugging Lotus code, we've developed a Visual Studio Code extension. You can access it here: [Lotus VSCode Extension](https://github.com/BreakerLabs/Prime-Language-Support).
 
 ## Project Structure
 

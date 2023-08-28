@@ -2,24 +2,29 @@ name: C/C++ CI
 
 on:
   push:
-    branches: [ "main", "dev" ]
+    branches: ['main', 'dev']
   pull_request:
-    branches: [ "main", "dev" ]
+    branches: ['main', 'dev']
 
 jobs:
   build:
-
     runs-on: windows-latest
 
     steps:
-    - name: Checkout code
-      uses: actions/checkout@v3
-      
-    - name: Set up environment
-      run: choco install make
+      - name: Checkout code
+        uses: actions/checkout@v3
 
-    - name: Build project
-      run: make
+      - name: Set up environment
+        run: choco install make
 
-    - name: Run tests
-      run: make check
+      - name: Set up CMake
+        run: choco install cmake
+
+      - name: Generate Makefile
+        run: cmake -B build
+
+      - name: Build project
+        run: make -C build
+
+      - name: Run tests
+        run: make -C build check

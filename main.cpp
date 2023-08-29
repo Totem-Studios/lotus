@@ -105,7 +105,8 @@ class Preprocessor {
                 if(directive == "use") {
                     const std::string utility = get_utility(stream);
                     if(utility == directory) {
-                        std::cerr << "lotus ~ preprocessor error: filestream error\n\t| directory includes itself"
+                        std::cerr << "lotus ~ preprocessor error: filestream error\n\t| directory includes itself: "
+                                  << directory
                                   << "\n\t| ~ process terminated" << std::endl;
                         return;
                     }

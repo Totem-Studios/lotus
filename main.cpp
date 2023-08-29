@@ -12,6 +12,7 @@ class Preprocessor {
 
     std::string get_directive(std::ifstream& stream) {
         stream.get();
+        std::string directive;
         while(!isalpha(stream.peek()) && (stream.peek() == ' ' || stream.peek() == '\t') && stream.peek() != '\n') {
             stream.get();
         }
@@ -21,10 +22,9 @@ class Preprocessor {
             std::cerr << "lotus ~ preprocessor error: syntax error\n\t| encountered illegal character when interpreting directive (digit/symbol): " << static_cast<char>(stream.peek()) << "\n\t| ~ compilation terminated" << std::endl;
             while(stream.peek() != '\n') stream.get();
         } else {
-            std::string directive;
             while(isalpha(stream.peek())) directive+=static_cast<char>(stream.get());
-            return directive;
         }
+        return directive;
     }
 
     std::string get_utility(std::ifstream& stream) {
@@ -104,13 +104,23 @@ class Preprocessor {
                 const std::string directive = get_directive(stream);
                 if(directive == "use") {
                     const std::string utility = get_utility(stream);
-                    for(const std::string util : utilities) {
-                        if(util == utility) {
-                            return;
-                        }
+                    if(utility == directory) {
+                        std::cerr << "lotus ~ preprocessor error: filestream error\n\t| directory includes itself: "
+                                  << directory
+                                  << "\n\t| ~ process terminated" << std::endl;
+                        return;
                     }
                     if(isSeized) {
                         utilities.push_back(utility);
+                    }
+                    for(const std::string& util : utilities) {
+                        if(util == utility) {
+
+                        } else if(util == directory) {
+
+                        } else if(util == utility && util == directory) {
+
+                        }
                     }
                     if(utility[utility.size()-1] == ':') {
                         std::cerr << "NOT IMPLEMENTED YET!\n";

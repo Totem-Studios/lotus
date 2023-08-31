@@ -1,5 +1,4 @@
 @seize
-@use ../SDL/interface.ltsu
 @def STRING char *
 @def print shell::log
 
@@ -7,4 +6,12 @@ namespace shell {
     fn log(STRING format, ...) {
 
     }: 0;
-};
+
+    fn write(STRING format, ...) {
+
+    }: 0;
+
+    fn note(STRING format, ...) {
+
+    }: 0;
+}

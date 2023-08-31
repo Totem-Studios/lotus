@@ -26,7 +26,9 @@ class Preprocessor {
             diagnostics::syntax_error(time, "illegal character", "| encountered illegal character when interpreting directive (digit/symbol): ", std::to_string(static_cast<char>(stream.peek())));
             while(stream.peek() != '\n') stream.get();
         } else {
+
             while(stream.peek() != EOF && isalpha(stream.peek())) directive+=static_cast<char>(stream.get());
+
         }
         return directive;
     }
@@ -94,66 +96,6 @@ class Preprocessor {
         }
         return this_macro;
     }
-
-    /* void process(const std::chrono::high_resolution_clock::time_point& time) {
-        std::ifstream stream(directory, std::ios::binary);
-        if(!stream) {
-            std::cerr << "lotus ~ internal error: filestream error\n\t| failed to open directory: " << directory << "\n\t| ~ process terminated" << std::endl;
-            return;
-        }
-        bool isSeized = false;
-        while(stream.peek() != EOF) {
-            if(stream.peek() == '@') {
-                const std::string directive = get_directive(stream, time);
-                if(directive == "use") {
-                    const std::string utility = get_utility(stream, time);
-                    for(const std::string util : utilities) {
-                        if(util == utility) {
-                            return;
-                        }
-                    }
-                    if(isSeized) {
-                        utilities.push_back(utility);
-                    }
-                    if(utility[utility.size()-1] == ':') {
-                        std::cerr << "NOT IMPLEMENTED YET!\n";
-                    } else {
-                        process(utility, time);
-                    }
-                } else if(directive == "seize") {
-                    isSeized = true;
-                } else if(directive == "banish") {
-
-                } else if(directive == "def") {
-                    macros.push_back(get_macro(stream, time));
-                } else if(directive == "if") {
-
-                } else if(directive == "ifdef") {
-
-                } else if(directive == "ifndef") {
-
-                } else if(directive == "endif") {
-
-                } else {
-                    std::cerr << "lotus ~ preprocessor error: directive error\n\t| failed to deduce directive: " << directive << "\n\t| ~ process terminated" << std::endl;
-                }
-            } else {
-                if(isalpha(stream.peek()) || stream.peek() == '_') {
-                    std::string pos_macro;
-                    while(isalpha(stream.peek()) || stream.peek() == '_') {
-                        pos_macro+=static_cast<char>(stream.get());
-                    }
-                    std::string result = check_macro(pos_macro, time);
-                    for(const char& c : result) {
-                        content.push_back(c);
-                    }
-                } else {
-                    content.push_back(static_cast<char>(stream.get()));
-                }
-            }
-        }
-        stream.close();
-    } */
 
     void include_utility_files(const std::string& directory, const std::chrono::high_resolution_clock::time_point& time) {
         std::ifstream stream(directory, std::ios::binary);

@@ -1,3 +1,4 @@
+
 @seize
 @def STRING char *
 @def print shell::log

@@ -1,4 +1,7 @@
-@def STRING char*
+
+@seize
+@def STRING char *
+@def print shell::log
 
 namespace shell {
     fn log(STRING format, ...) {

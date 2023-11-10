@@ -1,5 +1,0 @@
-namespace chrono {
-    class clock {
-
-    }
-}

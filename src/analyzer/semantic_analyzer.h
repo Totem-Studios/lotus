@@ -2,6 +2,7 @@
 
 #pragma once
 #include "../parser/ast/node.h"
+#include <utility>
 
 class SemanticAnalyzer {
  public:

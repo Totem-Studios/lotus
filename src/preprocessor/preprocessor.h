@@ -99,8 +99,8 @@ class Preprocessor {
         return false;
     }
 
-    bool test_conditional(const std::vector<Macro> *setOfMacros, const std::chrono::high_resolution_clock::time_point& time) {
-        // TODO(Nenne375): Implement test_conditional function
+    inline bool test_conditional(const std::vector<Macro> *setOfMacros, const std::chrono::high_resolution_clock::time_point& time) {
+        // TODO: Implement test_conditional function
         return false;  // default return statement
     }
 
@@ -159,7 +159,7 @@ class Preprocessor {
             utilities.push_back(current_directory);
             std::string directory = get_utility(row, stream, time);
             std::cerr << "!" << directory << "!" << current_directory << "!" << std::endl;
-            if(directory == current_directory) {
+            if (directory == current_directory) {
                 preprocessor::error(time, "self-reference in utility file", "| encountered reference to self in '@use' directive in: ", current_directory, false);
                 exit(1);
             } else current_directory = directory;
@@ -312,14 +312,13 @@ class Preprocessor {
         if (directive == "use") {
             if (handle_use(recursive_calls, row, stream, time) == 1) return 1;
         } else if (directive == "seize") {
-            for(const std::string& s : utilities) {
-                if(s == current_directory) {
+            for (const std::string& s : utilities) {
+                if (s == current_directory) {
                     *isSeized = true;
                     return 0;
                 }
             }
         } else if (directive == "banish") {
-
         } else if (directive == "def") {
             return handle_def(row, stream, time);
         } else if (directive == "if") {
@@ -351,7 +350,7 @@ class Preprocessor {
         static unsigned int recursive_calls = 0;
         std::ifstream stream(current_directory, std::ios::binary);
         if (!stream) {
-            if(recursive_calls == 0) {
+            if (recursive_calls == 0) {
                 internal::error(time, "filestream.ltsu error", "| failed to open directory: ", current_directory);
                 exit(1);
             } else {
@@ -370,32 +369,13 @@ class Preprocessor {
         return 0;
     }
 
-    void prepare_content(const std::chrono::high_resolution_clock::time_point& time) {
-        for (const char& c : content) {
-            lexer_ready_content += c;
-        }
-    }
-
  public:
-    std::string content, lexer_ready_content;
+    std::string content;
     explicit Preprocessor(std::string  directory, const std::chrono::high_resolution_clock::time_point& time): current_directory(std::move(directory))  {
         preprocess(time);
-        prepare_content(time);
         const auto end_time = std::chrono::high_resolution_clock::now();
         const auto prep_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - time);
         std::cout << "\n\npreprocessor finished after " << prep_time.count() << " ms" << std::endl;
-        std::cout << "Macros: \n";
-        for (const Macro& m : macros) {
-            std::cout << m.macro << " " << m.value << "\n";
-        }
-        for (const char& c : content) {
-            std::cout << c;
-        }
-        std::cout << "\n\nLexer ready content:\n\n";
-        for (const char& c : lexer_ready_content) {
-            std::cout << c;
-        }
-        std::cout << "\n\n\n";
     }
 
     ~Preprocessor() = default;

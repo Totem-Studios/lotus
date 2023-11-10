@@ -33,6 +33,7 @@ add_executable(Lotus src/main.cpp
         tests/performance/test_performance.cpp
         src/generator/x86_64/generator.h
         src/generator/x86_64/generator.cpp
+        tests/preprocessor/test_preprocessor.cpp
 )
 
 # set_target_properties(Lotus PROPERTIES OUTPUT_NAME "lotus")

@@ -21,12 +21,7 @@ class Parser {
 public:
     AST::Node root;
 
-    Parser(std::vector<token> *_tokens, const std::chrono::high_resolution_clock::time_point &time)
-    : index(0),
-      tokens(_tokens),
-      root(parse(time))
-    {
-
+    Parser(std::vector<token> *_tokens, const std::chrono::high_resolution_clock::time_point &time): index(0),tokens(_tokens), root(parse(time)) {
     }
 
     ~Parser() = default;

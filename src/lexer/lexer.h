@@ -190,11 +190,11 @@ class Lexer {
                     case '/':
                         if ((*lexer_ready_content)[index + 1] == '/') {
                             index++;
-                            while(!(index < lexer_ready_content->size() && (*lexer_ready_content)[index] == '\r' && (*lexer_ready_content)[index + 1] == '\n')) index++;
+                            while (!(index < lexer_ready_content->size() && (*lexer_ready_content)[index] == '\r' && (*lexer_ready_content)[index + 1] == '\n')) index++;
                         } else if ((*lexer_ready_content)[index + 1] == '*') {
                             index += 2;
                             std::string comment = "/*";
-                            while(index < lexer_ready_content->size() && !((*lexer_ready_content)[index] == '*' && (*lexer_ready_content)[index + 1] == '/')) {
+                            while (index < lexer_ready_content->size() && !((*lexer_ready_content)[index] == '*' && (*lexer_ready_content)[index + 1] == '/')) {
                                 comment += (*lexer_ready_content)[index++];
                             }
                             comment += "*/";
@@ -249,11 +249,11 @@ class Lexer {
  public:
     std::vector<token> tokens;
     explicit Lexer(const std::string *lexer_ready_content, const std::chrono::high_resolution_clock::time_point& time) {
-        std::cout << "LEXER" << std::endl;
         lex(lexer_ready_content, time);
         const auto end_time = std::chrono::high_resolution_clock::now();
         const auto prep_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - time);
         std::cout << "\n\nlexer finished after " << prep_time.count() << " ms" << std::endl;
+        // For the moment: displays all tokens
         for (const token& t : tokens) {
             std::cout << "{" << t.type << ", " << t.lexeme << "}\n";
         }

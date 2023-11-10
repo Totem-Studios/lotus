@@ -21,7 +21,7 @@ jobs:
         run: choco install cmake
 
       - name: Generate Makefile
-        run: cmake -B build
+        run: cmake -B build -S .
 
       - name: Build project
         run: make -C build

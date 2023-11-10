@@ -10,16 +10,16 @@
 #include "./generator/x86_64/generator.h"
 
 int main(int argc, char** argv) {
-    if(argc < 2) {std::cerr << "Usage: " << argv[0] << std::endl; return 1;}
+    if (argc < 2) {std::cerr << "Usage: " << argv[0] << std::endl; return 1;}
     std::string compilable = /*"../tests/code.lts"*/argv[1];
     const auto time = std::chrono::high_resolution_clock::now();
     Preprocessor preprocessor(compilable, time);
-    Lexer lexer(&preprocessor.lexer_ready_content, time);
+    Lexer lexer(&preprocessor.content, time);
     Parser parser(&lexer.tokens, time);
     SemanticAnalyzer semanticAnalyzer(parser.root, time);
     Generator generator(semanticAnalyzer.root, time);
     if (argc == 3)
-        generator.createAsmFile(argv[2]);
+        generator.fillAsmFile(argv[2]);
     const auto endTime = std::chrono::high_resolution_clock::now();
     const auto durTime = std::chrono::duration_cast<std::chrono::milliseconds>(endTime-time);
     std::cout << "\n\ncompilation successful: " << durTime.count() << "ms" << std::endl;

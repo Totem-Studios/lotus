@@ -5,6 +5,7 @@
 #include <utility>
 #include <vector>
 #include <chrono>
+#include <unordered_map>
 
 #include "../../lexer/token.h"
 

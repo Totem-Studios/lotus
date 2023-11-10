@@ -1,0 +1,24 @@
+name: Linter Check
+
+on:
+  push:
+    branches: ['main', 'dev']
+  pull_request:
+    branches: ['main', 'dev']
+
+jobs:
+  cpplint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v2
+
+      - name: Install dependencies
+        run: sudo apt-get install python3-pip
+
+      - name: Install cpplint
+        run: pip3 install cpplint
+
+      - name: Run cpplint
+        run: find ./config ./src ./tests -name '*.cpp' -or -name '*.h' | xargs cpplint # This targets all files including those in all subdirectories inside ./config, ./src and ./tests.

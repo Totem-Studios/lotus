@@ -1,0 +1,18 @@
+name: First Interaction Greetings
+
+# This workflow is triggered when a new issue is opened or a new pull request is made
+on: [pull_request_target, issues]
+
+jobs:
+  greeting:
+    runs-on: windows-latest
+    permissions:
+      issues: write
+      pull-requests: write
+    steps:
+      - name: Greet New Contributors
+        uses: actions/first-interaction@v1
+        with:
+          repo-token: ${{ secrets.GITHUB_TOKEN }}
+          issue-message: "Welcome to our community! We're thrilled that you've opened an issue. Our team will assist you shortly."
+          pr-message: "Hello! Thanks for your pull request. Our team is looking forward to reviewing your changes. 😄"

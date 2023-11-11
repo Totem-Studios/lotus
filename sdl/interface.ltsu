@@ -1,0 +1,5 @@
+@def EOF '\0'
+
+namespace shell {
+    fn print(const char* format, ...): inline -> const char*;
+}

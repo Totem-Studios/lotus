@@ -11,6 +11,11 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${OUTPUT_DIRECTORY})
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DIRECTORY})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIRECTORY})
 
+find_package(FLEX REQUIRED)
+
+# Generate lexer file with flex
+flex_target(Lexer src/lexer/lexer.l src/lexer/lex.yy.cpp)
+
 add_executable(Lotus src/main.cpp
         src/preprocessor/preprocessor.h
         src/preprocessor/preprocessor.cpp
@@ -25,6 +30,7 @@ add_executable(Lotus src/main.cpp
         src/lexer/lexer.h
         src/lexer/lexer.cpp
         src/lexer/token.h
+        ${FLEX_Lexer_OUTPUTS}
         src/parser/ast/node.h
         src/optimizer/optimizer.cpp
         tests/errors/test_errors.cpp

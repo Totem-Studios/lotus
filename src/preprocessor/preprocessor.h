@@ -377,7 +377,7 @@ class Preprocessor {
 
  public:
     std::string content;
-    explicit Preprocessor(std::string  directory, const std::chrono::high_resolution_clock::time_point& time): current_directory(std::move(directory))  {
+    explicit Preprocessor(std::string directory, const std::chrono::high_resolution_clock::time_point& time): current_directory(std::move(directory))  {
         preprocess(time);
         const auto end_time = std::chrono::high_resolution_clock::now();
         const auto prep_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - time);

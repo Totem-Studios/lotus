@@ -12,9 +12,15 @@ set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${OUTPUT_DIRECTORY})
 set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIRECTORY})
 
 find_package(FLEX REQUIRED)
+find_package(BISON REQUIRED)
 
 # Generate lexer file with flex
 flex_target(Lexer src/lexer/lexer.l src/lexer/lex.yy.cpp)
+
+# Generate parser file with bison
+bison_target(Parser src/parser/parser.y src/parser/parser.tab.cpp DEFINES_FILE src/parser/parser.tab.h)
+
+include_directories(src/parser)
 
 add_executable(Lotus src/main.cpp
         src/preprocessor/preprocessor.h
@@ -27,6 +33,10 @@ add_executable(Lotus src/main.cpp
         src/diagnostics/semantic_analyzer.h
         src/parser/parser.h
         src/parser/parser.cpp
+        src/parser/wrappers.h
+        src/parser/ast.h
+        src/parser/parse.h
+        ${BISON_Parser_OUTPUTS}
         src/lexer/lexer.h
         src/lexer/lexer.cpp
         src/lexer/token.h

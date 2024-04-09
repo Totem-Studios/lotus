@@ -1,7 +1,11 @@
 %{
 #include <cstdlib> // for std::atoi
 #include <iostream>
+#include "../parser/parser.tab.h"
+#include "../parser/wrappers.h" // for StringWrapper
 %}
+
+%option yylineno
 
 /* Regex */
 type bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char
@@ -15,34 +19,34 @@ one_line_comment ([/][/]).*
 
 /* Rules */
 %%
-(return|ret) {std::cout << yytext << "\n";}
-"if" {std::cout << yytext << "\n";}
-"while" {std::cout << yytext << "\n";}
-"fn" {std::cout << yytext << "\n";}
-"->" {std::cout << yytext << "\n";}
-"=" {std::cout << yytext << "\n";}
-"+" {std::cout << yytext << "\n";}
-"-" {std::cout << yytext << "\n";}
-"*" {std::cout << yytext << "\n";}
-"/" {std::cout << yytext << "\n";}
-"(" {std::cout << yytext << "\n";}
-")" {std::cout << yytext << "\n";}
-"{" {std::cout << yytext << "\n";}
-"}" {std::cout << yytext << "\n";}
-";" {std::cout << yytext << "\n";}
-":" {std::cout << yytext << "\n";}
-"," {std::cout << yytext << "\n";}
-"." {std::cout << yytext << "\n";}
-{type} {std::cout << yytext << "\n";}
-{identifier} {std::cout << yytext << "\n";}
-{integer_literal} {std::cout << yytext << "\n";}
-{float_literal} {std::cout << yytext << "\n";}
-{character} {std::cout << yytext << "\n";}
-{string} {std::cout << yytext << "\n";}
-{multi_line_comment} {}
+(return|ret) {return TOK_RETURN;}
+"if" {return TOK_IF;}
+"while" {return TOK_WHILE;}
+"fn" {return TOK_FN;}
+"->" {return TOK_ARROW;}
+"=" {return TOK_EQUALS;}
+"+" {return TOK_PLUS;}
+"-" {return TOK_HYPHEN;}
+"*" {return TOK_ASTERISK;}
+"/" {return TOK_F_SLASH;}
+"(" {return TOK_L_PAREN;}
+")" {return TOK_R_PAREN;}
+"{" {return TOK_L_BRACE;}
+"}" {return TOK_R_BRACE;}
+";" {return TOK_SEMICOLON;}
+":" {return TOK_COLON;}
+"," {return TOK_COMMA;}
+"." {return TOK_DOT;}
+{type} {yylval.str = new StringWrapper(yytext); return TOK_TYPE;}
+{identifier} {yylval.str = new StringWrapper(yytext); return TOK_IDENTIFIER;}
+{integer_literal} {yylval.int_literal = std::atoi(yytext); return TOK_INT_LITERAL;}
+{float_literal} {yylval.float_literal = std::atoi(yytext); return TOK_FLOAT_LITERAL;}
+{character} {yylval.character = yytext[1]; return TOK_CHAR_LITERAL;}
+{string} {yylval.str = new StringWrapper(yytext); return TOK_STR_LITERAL;}
+{multi_line_comment} {/* count the number of newlines */ for (char c : std::string(yytext)) if (c == '\n') yylineno++;}
 {one_line_comment} {}
 [ \t\r] {}
-\n {}
+\n {yylineno++;}
 . {std::cout << "Unrecognized input: " << yytext << "\n";}
 %%
 

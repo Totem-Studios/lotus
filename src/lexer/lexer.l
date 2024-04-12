@@ -1,8 +1,12 @@
 %{
 #include <cstdlib> // for std::atoi
 #include <iostream>
+#include <chrono>
+
 #include "../parser/parser.tab.h"
 #include "../parser/wrappers.h" // for StringWrapper
+
+#include "../diagnostics/lexer.h"
 %}
 
 %option yylineno
@@ -43,11 +47,10 @@ one_line_comment ([/][/]).*
 {float_literal} {yylval.float_literal = std::atoi(yytext); return TOK_FLOAT_LITERAL;}
 {character} {yylval.character = yytext[1]; return TOK_CHAR_LITERAL;}
 {string} {yylval.str = new StringWrapper(yytext); return TOK_STR_LITERAL;}
-{multi_line_comment} {/* count the number of newlines */ for (char c : std::string(yytext)) if (c == '\n') yylineno++;}
+{multi_line_comment} {}
 {one_line_comment} {}
-[ \t\r] {}
-\n {yylineno++;}
-. {std::cout << "Unrecognized input: " << yytext << "\n";}
+[ \t\r\n] {}
+. {syntax::nonfatal_error(std::chrono::high_resolution_clock::now(), "Unrecognized token", "The following characters could not be defined as a token: ", yytext);}
 %%
 
 // flex uses this when it encounters end of file, to check if it should continue to another file

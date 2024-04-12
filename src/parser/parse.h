@@ -1,4 +1,4 @@
 #pragma once
 #include "ast.h"
 
-std::unique_ptr<AbstractSyntaxTree> &parse(const std::string& filename);
+std::unique_ptr<AST> &parse(const std::string& filename);

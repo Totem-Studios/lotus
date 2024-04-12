@@ -1,12 +1,10 @@
-@use ../sdl/interface.ltsu
-@use ../tests/code.lts
-
-enum hej {
-    HEJ = 0,
-    HEJ2,
-    HEJSAN
-}/**/;
-
-fn main() {
-    print("Hello World!");
+// comment
+fn sub(x: i32, y: i32) -> i32 {
+    ret x - y;
+}
+fn sum(x: i32, y: i32) -> i32 {
+    ret x + y;
+}
+fn main() -> i32 {
+   ret sum(62, sub(10, 30));
 }

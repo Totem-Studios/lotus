@@ -2,16 +2,19 @@
 #include <iostream>
 #include <string>
 #include <memory>
-#include <cstdlib> // for exit
+#include <chrono>
+
 #include "./ast.h"
 #include "./wrappers.h" // for VectorWrapper and StringWrapper
+
+#include "../diagnostics/parser.h"
 
 extern int yylex();
 extern int yyparse();
 extern FILE *yyin;
 extern int yylineno;
 void yyerror(const char *s);
-std::unique_ptr<AbstractSyntaxTree> ast;
+std::unique_ptr<AST> ast;
 %}
 
 %union {
@@ -37,7 +40,7 @@ std::unique_ptr<AbstractSyntaxTree> ast;
 /* bison grammar */
 %%
 program
-    : instanceStatementList {ast = std::make_unique<AbstractSyntaxTree>($1->getVector()); delete $1;}
+    : instanceStatementList {ast = std::make_unique<AST>($1->getVector()); delete $1;}
     ;
 
 instanceStatementList
@@ -130,12 +133,10 @@ factor
 
 // runs when bison finds an error
 void yyerror(const char *s) {
-    // subtract 1 from yylineno since it starts at 1 when the program starts
-    std::cerr << "Parse error at line " << yylineno - 1 << ": " << s << '\n';
-    exit(1);
+    parser::fatal_error(std::chrono::high_resolution_clock::now(), s, "A parsing error occurred on line: " + std::to_string(yylineno));
 }
 
-std::unique_ptr<AbstractSyntaxTree> &parse(const std::string& filename) {
+std::unique_ptr<AST> &parse(const std::string& filename) {
     FILE *file = fopen(filename.c_str(), "r");
     // yyin is the file that bison will read from
     yyin = file;

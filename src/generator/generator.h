@@ -1,3 +1,5 @@
+// Copyright 2023 Pontus Henriksson & Neo Mannskär, 2024 Lucas Norman
+
 #pragma once
 #include <memory>
 
@@ -35,7 +37,7 @@ class Generator {
         std::cout << "\n[Generated IR]\n";
         moduleLLVM->print(llvm::outs(), nullptr);
 
-        // TODO: save the module IR to a file
+        // save the module IR to a file
         // saveModuleToFile(TODO);
     }
 

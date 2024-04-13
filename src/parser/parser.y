@@ -1,3 +1,5 @@
+/* Copyright 2024 Lucas Norman */
+
 %{
 #include <iostream>
 #include <string>

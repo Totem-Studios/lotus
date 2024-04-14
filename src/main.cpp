@@ -1,4 +1,4 @@
-// Copyright 2023 Pontus Henriksson & Neo Mannskär, 2024 Lucas Norman
+// Copyright 2024 Pontus Henriksson, Neo Mannskär & Lucas Norman
 
 #include <iostream>
 #include <chrono>

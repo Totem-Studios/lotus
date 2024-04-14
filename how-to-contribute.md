@@ -23,11 +23,11 @@ Before submitting a bug report, ensure that you do the following:
 
 1. Check the [FAQs](FAQ.md) for a list of common questions and problems.
 2. Make sure you are using the latest version.
-3. Check the existing [issues](https://github.com/BreakerLabs/Lotus/issues) to make sure you are not duplicating someone's work.
+3. Check the existing [issues](https://github.com/Totem-Studios/Lotus/issues) to make sure you are not duplicating someone's work.
 
 ### Suggesting Enhancements
 
-If you have an idea for an enhancement, create an issue using the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) or email us at ***pontushenrikssn@gmail.com***.
+If you have an idea for an enhancement, create an issue using the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) or email us at **\*\***pontus@henriksson.space**_@gmail.com_**.
 
 ### Your First Code Contribution
 

@@ -23,9 +23,11 @@ class Generator {
         ctx = std::make_unique<llvm::LLVMContext>();
         moduleLLVM = std::make_unique<llvm::Module>("LotusLLVM", *ctx);
         builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
+        setupExternFunctions();
         generate(filename);
     }
 
+ private:
     void generate(const std::string& filename) {
         // create the ast
         std::unique_ptr<AST> &ast = parse(filename);
@@ -41,7 +43,10 @@ class Generator {
         // saveModuleToFile(TODO);
     }
 
- private:
+    void setupExternFunctions() {
+        moduleLLVM->getOrInsertFunction("printf", llvm::FunctionType::get(builder->getInt32Ty(), builder->getInt8Ty()->getPointerTo(), true));
+    }
+
     void saveModuleToFile(const std::string& filename) {
         std::error_code errorCode;
         llvm::raw_fd_ostream stream(filename, errorCode);

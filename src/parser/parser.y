@@ -32,10 +32,10 @@ std::unique_ptr<AST> ast;
 %token<float_literal> TOK_FLOAT_LITERAL
 %token<str> TOK_IDENTIFIER TOK_TYPE TOK_STR_LITERAL TOK_F_STR_START TOK_F_STR_MIDDLE TOK_F_STR_END
 %token<character> TOK_CHAR_LITERAL
-%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_WHILE TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT
+%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR
 
-%type<node> expression instanceStatement localStatement compoundStatement statement functionDefinition functionPrototype parameter returnStatement functionCall numericalExpression term factor
-%type<nodeList> instanceStatementList statementList parameterList argumentList
+%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall numericalExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3
+%type<nodeList> instanceStatementList localStatementList parameterList argumentList
 
 %start program
 
@@ -50,28 +50,37 @@ instanceStatementList
     | instanceStatement {$$ = new VectorWrapper($1);}
     ;
 
-statementList
-    : statementList statement {$$ = $1; $$->push($2);}
-    | statement {$$ = new VectorWrapper($1);}
-    ;
-
-statement
-    : instanceStatement {$$ = $1;}
-    | localStatement {$$ = $1;}
-    ;
-
 instanceStatement
     : functionDefinition {$$ = $1;}
     ;
 
+localStatementList
+    : localStatementList localStatement {$$ = $1; $$->push($2);}
+    | localStatement {$$ = new VectorWrapper($1);}
+    ;
+
 localStatement
-    : expression TOK_SEMICOLON {$$ = $1;}
+    : closedStatement {$$ = $1;}
+    | openStatement {$$ = $1;}
+    ;
+
+closedStatement
+    : TOK_IF expression compoundStatement TOK_ELSE closedStatement {$$ = new ASTIfElseStatement($2, $3, $5);}
+    | TOK_IF expression TOK_COLON closedStatement TOK_ELSE closedStatement {$$ = new ASTIfElseStatement($2, $4, $6);}
+    | expression TOK_SEMICOLON {$$ = $1;}
     | returnStatement TOK_SEMICOLON {$$ = $1;}
     | compoundStatement {$$ = $1;}
     ;
 
+openStatement
+    : TOK_IF expression compoundStatement {$$ = new ASTIfStatement($2, $3);}
+    | TOK_IF expression compoundStatement TOK_ELSE openStatement {$$ = new ASTIfElseStatement($2, $3, $5);}
+    | TOK_IF expression TOK_COLON localStatement {$$ = new ASTIfStatement($2, $4);}
+    | TOK_IF expression TOK_COLON closedStatement TOK_ELSE openStatement {$$ = new ASTIfElseStatement($2, $4, $6);}
+    ;
+
 compoundStatement
-    : TOK_L_BRACE statementList TOK_R_BRACE {$$ = new ASTCompoundStatement($2->getVector()); delete $2;}
+    : TOK_L_BRACE localStatementList TOK_R_BRACE {$$ = new ASTCompoundStatement($2->getVector()); delete $2;}
     | TOK_L_BRACE TOK_R_BRACE {$$ = new ASTCompoundStatement();}
     ;
 
@@ -110,24 +119,50 @@ argumentList
 
 expression
     : numericalExpression {$$ = $1;}
+    | booleanExpression {$$ = $1;}
+    | TOK_STR_LITERAL {$$ = new ASTString($1->getString()); delete $1;}
+    ;
+
+booleanExpression
+    : booleanExpression TOK_OR booleanExpression2 {$$ = new ASTBinaryOperator($1, $3, "||");}
+    | booleanExpression2 {$$ = $1;}
+    ;
+
+booleanExpression2
+    : booleanExpression2 TOK_AND booleanExpression3 {$$ = new ASTBinaryOperator($1, $3, "&&");}
+    | booleanExpression3 {$$ = $1;}
+    ;
+
+booleanExpression3
+    : TOK_NOT booleanExpression3 {$$ = $$ = new ASTUnaryOperator($2, "!");}
+    | TOK_NOT numericalExpression {$$ = $$ = new ASTUnaryOperator($2, "!");}
+    | numericalExpression TOK_DOUBLE_EQUALS numericalExpression {$$ = new ASTBinaryOperator($1, $3, "==");}
+    | numericalExpression TOK_NOT_EQUALS numericalExpression {$$ = new ASTBinaryOperator($1, $3, "!=");}
+    | numericalExpression TOK_LESS_THAN numericalExpression {$$ = new ASTBinaryOperator($1, $3, "<");}
+    | numericalExpression TOK_GREATER_THAN numericalExpression {$$ = new ASTBinaryOperator($1, $3, ">");}
+    | numericalExpression TOK_LESS_THAN_EQUALS numericalExpression {$$ = new ASTBinaryOperator($1, $3, "<=");}
+    | numericalExpression TOK_GREATER_THAN_EQUALS numericalExpression {$$ = new ASTBinaryOperator($1, $3, ">=");}
+    | TOK_TRUE {$$ = new ASTNumber(1);}
+    | TOK_FALSE {$$ = new ASTNumber(0);}
     ;
 
 numericalExpression
-    : numericalExpression TOK_PLUS term {$$ = new ASTBinaryOperator($1, $3, '+');}
-    | numericalExpression TOK_HYPHEN term {$$ = new ASTBinaryOperator($1, $3, '-');}
+    : numericalExpression TOK_PLUS term {$$ = new ASTBinaryOperator($1, $3, "+");}
+    | numericalExpression TOK_HYPHEN term {$$ = new ASTBinaryOperator($1, $3, "-");}
     | term {$$ = $1;}
     ;
 
 term
-    : term TOK_ASTERISK factor {$$ = new ASTBinaryOperator($1, $3, '*');}
-    | term TOK_F_SLASH factor {$$ = new ASTBinaryOperator($1, $3, '/');}
+    : term TOK_ASTERISK factor {$$ = new ASTBinaryOperator($1, $3, "*");}
+    | term TOK_F_SLASH factor {$$ = new ASTBinaryOperator($1, $3, "/");}
     | factor {$$ = $1;}
     ;
 
 factor
     : TOK_INT_LITERAL {$$ = new ASTNumber($1);}
-    | TOK_HYPHEN TOK_INT_LITERAL {$$ = new ASTNumber(-$2);} /* To handle cases like: (-5) * 2; and 3 * -2; */
-    | TOK_L_PAREN expression TOK_R_PAREN {$$ = $2;}
+    | TOK_HYPHEN factor {$$ = new ASTUnaryOperator($2, "-");} /* To handle cases like: (-5) * 2; and 3 * -2; */
+    | TOK_PLUS factor {$$ = new ASTUnaryOperator($2, "+");}
+    | TOK_L_PAREN numericalExpression TOK_R_PAREN {$$ = $2;}
     | TOK_IDENTIFIER {$$ = new ASTVariableExpression($1->getString()); delete $1;}
     | functionCall {$$ = $1;}
     ;

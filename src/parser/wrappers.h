@@ -21,10 +21,10 @@ struct VectorWrapper {
     ~VectorWrapper() {
         delete vector;
     }
-    void push(ASTNode *node) {
+    void push(ASTNode *node) const {
         vector->push_back(node);
     }
-    inline std::vector<ASTNode*> &getVector() { return *vector; }
+    inline std::vector<ASTNode*> &getVector() const { return *vector; }
 };
 
 // create a wrapper struct around the std::string, so that it can be used in the bison union
@@ -34,8 +34,12 @@ struct StringWrapper {
     explicit StringWrapper(char *s) {
         string = new std::string(s);
     }
+    // create a std::string from s and length and store it in string
+    explicit StringWrapper(char *s, int length) {
+        string = new std::string(s, length);
+    }
     ~StringWrapper() {
         delete string;
     }
-    inline std::string &getString() { return *string; }
+    inline std::string &getString() const { return *string; }
 };

@@ -22,13 +22,28 @@ float_literal [0-9]*\.[0-9]+
 string ["][^".]*["]
 multi_line_comment [/][*](\n|.)*[*][/]
 one_line_comment ([/][/]).*
+not not|[!]
+and and|[&][&]
+or or|[|][|]
 
 /* Rules */
 %%
 (return|ret) {return TOK_RETURN;}
 "if" {return TOK_IF;}
+"else" {return TOK_ELSE;}
 "while" {return TOK_WHILE;}
 "fn" {return TOK_FN;}
+"true" {return TOK_TRUE;}
+"false" {return TOK_FALSE;}
+{not} {return TOK_NOT;}
+{and} {return TOK_AND;}
+{or} {return TOK_OR;}
+"==" {return TOK_DOUBLE_EQUALS;}
+"!=" {return TOK_NOT_EQUALS;}
+"<" {return TOK_LESS_THAN;}
+">" {return TOK_GREATER_THAN;}
+"<=" {return TOK_LESS_THAN_EQUALS;}
+">=" {return TOK_GREATER_THAN_EQUALS;}
 "->" {return TOK_ARROW;}
 "=" {return TOK_EQUALS;}
 "+" {return TOK_PLUS;}
@@ -48,7 +63,7 @@ one_line_comment ([/][/]).*
 {integer_literal} {yylval.int_literal = std::atoi(yytext); return TOK_INT_LITERAL;}
 {float_literal} {yylval.float_literal = std::atoi(yytext); return TOK_FLOAT_LITERAL;}
 {character} {yylval.character = yytext[1]; return TOK_CHAR_LITERAL;}
-{string} {yylval.str = new StringWrapper(yytext); return TOK_STR_LITERAL;}
+{string} {yylval.str = new StringWrapper(yytext + 1, yyleng - 2); return TOK_STR_LITERAL;}
 {multi_line_comment} {}
 {one_line_comment} {}
 [ \t\r\n] {}

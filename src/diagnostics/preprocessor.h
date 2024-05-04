@@ -1,4 +1,4 @@
-// Copyright 2023 Pontus Henriksson & Neo Mannskär
+// Copyright 2024 Pontus Henriksson & Neo Mannskär
 
 #pragma once
 #include <iostream>
@@ -15,7 +15,7 @@ namespace preprocessor {
         std::cerr << "lotus ~ preprocessor error: " << header << "\n"
                   << time_spacing << description << desc_var << "\n"
                   << std::string(time_spacing.length(), ' ') << "! process terminated\n";
-        exit(1); // Later add enum error code as function parameter
+        exit(1);  // Later add enum error code as function parameter
     }
 
     static std::string nonfatal_error(const std::chrono::high_resolution_clock::time_point& time, const std::string& header, const std::string &description, const std::string &desc_var = "") {

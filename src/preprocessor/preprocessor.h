@@ -1,4 +1,4 @@
-// Copyright 2023 Pontus Henriksson & Neo Mannskär
+// Copyright 2024 Pontus Henriksson & Neo Mannskär
 
 #pragma once
 #include <iostream>
@@ -153,7 +153,11 @@ class Preprocessor {
 
     int handle_use(unsigned int *recursive_calls, unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
         if (*recursive_calls >= MAX_UTILITY_RECURSION_DEPTH) {
-            preprocessor::nonfatal_error(time, "max recursion-depth reached", "| change codebase structure to have a max recursion depth of: " +  std::to_string(MAX_UTILITY_RECURSION_DEPTH) + " or edit MAX_UTILITY_RECURSION_DEPTH in config");
+            preprocessor::nonfatal_error(time,
+                                         "max recursion-depth reached",
+                                         "| change codebase structure to have a max recursion depth of: " +
+                                         std::to_string(MAX_UTILITY_RECURSION_DEPTH) +
+                                         " or edit MAX_UTILITY_RECURSION_DEPTH in config");
             return 1;
         } else {
             (*recursive_calls)++;
@@ -373,7 +377,7 @@ class Preprocessor {
 
  public:
     std::string content;
-    explicit Preprocessor(std::string  directory, const std::chrono::high_resolution_clock::time_point& time): current_directory(std::move(directory))  {
+    explicit Preprocessor(std::string directory, const std::chrono::high_resolution_clock::time_point& time): current_directory(std::move(directory))  {
         preprocess(time);
         const auto end_time = std::chrono::high_resolution_clock::now();
         const auto prep_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - time);

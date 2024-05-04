@@ -22,7 +22,7 @@ If you have achieved multiple roles from this list, only one role will be displa
   <tr>
     <td align="center">
       <a href="https://github.com/pontushenriksson">
-        <img src="https://avatars.githubusercontent.com/u/73602826?v=4" width="100px;" alt=""/>
+        <img src="https://avatars.githubusercontent.com/u/73602826?v=4" width="100px;" alt="Pontus's Github Profile"/>
         <br />
         <strong>Pontus Henriksson</strong>
       </a>
@@ -33,12 +33,23 @@ If you have achieved multiple roles from this list, only one role will be displa
     </td>
     <td align="center">
       <a href="https://github.com/nenne375">
-        <img src="https://avatars.githubusercontent.com/u/112271790?v=4" width="100px;" alt=""/>
+        <img src="https://avatars.githubusercontent.com/u/112271790?v=4" width="100px;" alt="Neo's Github Profile"/>
         <br />
         <strong>Neo Mannskär</strong>
       </a>
       <br />
       <small>Founder & Owner</small>
+      <br />
+      <small><img src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/Flag_of_Sweden.svg/1200px-Flag_of_Sweden.svg.png" width="16px;" alt="🇸🇪"/> Sweden</small>
+    </td>
+    <td align="center">
+      <a href="https://github.com/lucasnorman07">
+        <img src="https://avatars.githubusercontent.com/u/105874002?v=4" width="100px;" alt="Lucas's Github Profile"/>
+        <br />
+        <strong>Lucas Norman</strong>
+      </a>
+      <br />
+      <small>Major Contributor</small>
       <br />
       <small><img src="https://upload.wikimedia.org/wikipedia/en/thumb/4/4c/Flag_of_Sweden.svg/1200px-Flag_of_Sweden.svg.png" width="16px;" alt="🇸🇪"/> Sweden</small>
     </td>

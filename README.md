@@ -1,4 +1,4 @@
-<img src="https://breakerlabs.github.io/docs/media/images/logos/lotus_logo_text.png" height="70px;" alt="An image of the Lotus logo"/>
+<img src="https://cdn.totemstudios.org/lotus/media/original/image/logos/lotus/lotus_logo_text_lotus.png" height="70px;" alt="An image of the Lotus logo with the text lotus below"/>
 
 # Lotus: The Power of Simplicity
 
@@ -9,7 +9,7 @@ The syntax of Lotus is mainly C/C++ based however adding new features and "synta
 This repository contains the original compiler for Lotus. It is not yet finished and offers minimal debugging support with unoptimized binary. It is incomplete, as can be said for the Lotus SDL.
 
 | **Platform** | **Architecture** | **Status** |
-| ------------ |------------------| ---------- |
+| ------------ | ---------------- | ---------- |
 | **Windows**  | x86_64           | Underway   |
 | **macOS**    | x86_64, ARM      | Upcoming   |
 | **Linux**    | x86_64           | Upcoming   |
@@ -29,16 +29,16 @@ This repository contains the original compiler for Lotus. It is not yet finished
 
 ## Deep Dive into Lotus
 
-To learn more about Lotus, our comprehensive documentation is the perfect starting point. You can access it on our GitHub page: [Lotus Documentation](https://github.com/BreakerLabs/docs).
+To learn more about Lotus, our comprehensive documentation is the perfect starting point. You can access it on our GitHub page: [Lotus Documentation](https://github.com/Totem-Studios/docs).
 
 ## Lotus for Visual Studio Code
 
-To enhance the experience of writing and debugging Lotus code, we've developed a Visual Studio Code extension. You can access it here: [Lotus VSCode Extension](https://github.com/BreakerLabs/LLS-vscode).
+To enhance the experience of writing and debugging Lotus code, we've developed a Visual Studio Code extension. You can access it here: [Lotus VSCode Extension](https://github.com/Totem-Studios/LLS-vscode).
 
 ## Project Structure
 
 | Directory                | Contents                                                                                              |
-|--------------------------|-------------------------------------------------------------------------------------------------------|
+| ------------------------ | ----------------------------------------------------------------------------------------------------- |
 | `.github/workflow`       | here is the files that provides helps us test the code and more.                                      |
 | `.github/ISSUE_TEMPLATE` | here is the files that are being used as templates when creating an issue on our github repository.   |
 | `bin/`                   | here is the compiled binary files generated when compiling.                                           |
@@ -60,5 +60,5 @@ To run a Lotus project, you need to use the `lotus` command followed by the file
 ```shell
 # To run a Lotus program, use the `Lotus` command followed by the filename
 # Replace `filename` with the path to your .lts or .lotus file
-lotus myProgram.lts myExecutable 
+lotus myProgram.lts myExecutable
 ```

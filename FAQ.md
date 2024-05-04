@@ -3,14 +3,14 @@
 ## Table of Contents
 
 - [General](#general)
-    - [What is this project about?](#what-is-this-project-about)
-    - [How do I get started?](#how-do-i-get-started)
+  - [What is this project about?](#what-is-this-project-about)
+  - [How do I get started?](#how-do-i-get-started)
 - [Contribution](#contribution)
-    - [How can I contribute?](#how-can-i-contribute)
-    - [What do I need to know before I make a contribution?](#what-do-i-need-to-know-before-i-make-a-contribution)
+  - [How can I contribute?](#how-can-i-contribute)
+  - [What do I need to know before I make a contribution?](#what-do-i-need-to-know-before-i-make-a-contribution)
 - [Troubleshooting](#troubleshooting)
-    - [I found a bug, what should I do?](#i-found-a-bug-what-should-i-do)
-    - [I have a question that's not answered here, what should I do?](#i-have-a-question-thats-not-answered-here-what-should-i-do)
+  - [I found a bug, what should I do?](#i-found-a-bug-what-should-i-do)
+  - [I have a question that's not answered here, what should I do?](#i-have-a-question-thats-not-answered-here-what-should-i-do)
 
 ---
 
@@ -22,7 +22,7 @@ Lotus is a type-safe compiled programming language designed to simplify the synt
 
 ### How do I get started?
 
-To get started, you can refer to our documentation repository: [BreakerLabs/docs](https://github.com/BreakerLabs/docs).
+To get started, you can refer to our documentation repository: [Totem-Studios/docs](https://github.com/Totem-Studios/docs).
 
 ## Contribution
 
@@ -42,5 +42,4 @@ If you've found a bug, please open an issue using the [bug report template](.git
 
 ### I have a question that's not answered here, what should I do?
 
-If your question is not answered here, feel free to open an issue with the label `question` or reach out to us through email at ***pontushenrikssn@gmail.com***.
-
+If your question is not answered here, feel free to open an issue with the label `question` or reach out to us through email at ***pontus@henriksson.space***.

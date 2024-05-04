@@ -1,4 +1,4 @@
-<img src="https://cdn.totemstudios.org/lotus/logos/lotus_logo_text.png" height="70px;" alt="An image of the Lotus logo"/>
+<img src="https://cdn.totemstudios.org/lotus/media/original/image/logos/lotus/lotus_logo_text_lotus.png" height="70px;" alt="An image of the Lotus logo with the text lotus below"/>
 
 # Lotus: The Power of Simplicity
 

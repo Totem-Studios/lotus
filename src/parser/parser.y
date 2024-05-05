@@ -17,6 +17,7 @@ extern FILE *yyin;
 extern int yylineno;
 void yyerror(const char *s);
 std::unique_ptr<AST> ast;
+#define YYERROR_VERBOSE 1
 %}
 
 %union {
@@ -32,9 +33,9 @@ std::unique_ptr<AST> ast;
 %token<float_literal> TOK_FLOAT_LITERAL
 %token<str> TOK_IDENTIFIER TOK_TYPE TOK_STR_LITERAL TOK_F_STR_START TOK_F_STR_MIDDLE TOK_F_STR_END
 %token<character> TOK_CHAR_LITERAL
-%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR
+%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS
 
-%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall numericalExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3
+%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall numericalExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3 variableDeclaration variableAssignment variableDefinition ifCompatibleStatement
 %type<nodeList> instanceStatementList localStatementList parameterList argumentList
 
 %start program
@@ -60,28 +61,53 @@ localStatementList
     ;
 
 localStatement
+    : ifCompatibleStatement {$$ = $1;}
+    | variableDeclaration TOK_SEMICOLON
+    | variableDefinition TOK_SEMICOLON
+    ;
+
+/* this defines statements that are safe to use inside of if-statements with the ':' syntax */
+ifCompatibleStatement
     : closedStatement {$$ = $1;}
     | openStatement {$$ = $1;}
     ;
 
+/* this defines statements that are self closing and cannot be interpreted as the start of a bigger statement */
 closedStatement
     : TOK_IF expression compoundStatement TOK_ELSE closedStatement {$$ = new ASTIfElseStatement($2, $3, $5);}
     | TOK_IF expression TOK_COLON closedStatement TOK_ELSE closedStatement {$$ = new ASTIfElseStatement($2, $4, $6);}
     | expression TOK_SEMICOLON {$$ = $1;}
     | returnStatement TOK_SEMICOLON {$$ = $1;}
+    | variableAssignment TOK_SEMICOLON {$$ = $1;}
     | compoundStatement {$$ = $1;}
     ;
 
+/* this defines statements that are open, meaning they can be the start of a bigger statement or not */
 openStatement
     : TOK_IF expression compoundStatement {$$ = new ASTIfStatement($2, $3);}
     | TOK_IF expression compoundStatement TOK_ELSE openStatement {$$ = new ASTIfElseStatement($2, $3, $5);}
-    | TOK_IF expression TOK_COLON localStatement {$$ = new ASTIfStatement($2, $4);}
+    | TOK_IF expression TOK_COLON ifCompatibleStatement {$$ = new ASTIfStatement($2, $4);}
     | TOK_IF expression TOK_COLON closedStatement TOK_ELSE openStatement {$$ = new ASTIfElseStatement($2, $4, $6);}
     ;
 
 compoundStatement
     : TOK_L_BRACE localStatementList TOK_R_BRACE {$$ = new ASTCompoundStatement($2->getVector()); delete $2;}
     | TOK_L_BRACE TOK_R_BRACE {$$ = new ASTCompoundStatement();}
+    ;
+
+variableDeclaration
+    : TOK_IDENTIFIER TOK_COLON TOK_TYPE {$$ = new ASTVariableDeclaration($1->getString(), $3->getString()); delete $1; delete $3;}
+    | TOK_TYPE TOK_IDENTIFIER {$$ = new ASTVariableDeclaration($2->getString(), $1->getString()); delete $1; delete $2;}
+    ;
+
+variableAssignment
+    : TOK_IDENTIFIER TOK_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3); delete $1;}
+    ;
+
+variableDefinition
+    : TOK_IDENTIFIER TOK_COLON TOK_TYPE TOK_EQUALS expression {$$ = new ASTVariableDefinition($1->getString(), $3->getString(), $5); delete $1; delete $3;}
+    | TOK_IDENTIFIER TOK_COLON TOK_EQUALS expression {$$ = new ASTVariableDefinition($1->getString(), "auto", $4); delete $1;}
+    | TOK_TYPE TOK_IDENTIFIER TOK_EQUALS expression {$$ = new ASTVariableDefinition($2->getString(), $1->getString(), $4); delete $1; delete $2;}
     ;
 
 functionDefinition
@@ -105,6 +131,7 @@ parameterList
 
 parameter
     : TOK_IDENTIFIER TOK_COLON TOK_TYPE {$$ = new ASTParameter($1->getString(), $3->getString()); delete $1; delete $3;}
+    | TOK_TYPE TOK_IDENTIFIER {$$ = new ASTParameter($2->getString(), $1->getString()); delete $1; delete $2;}
     ;
 
 functionCall
@@ -121,6 +148,7 @@ expression
     : numericalExpression {$$ = $1;}
     | booleanExpression {$$ = $1;}
     | TOK_STR_LITERAL {$$ = new ASTString($1->getString()); delete $1;}
+    | TOK_CHAR_LITERAL {$$ = new ASTChar($1);}
     ;
 
 booleanExpression

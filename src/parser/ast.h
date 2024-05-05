@@ -15,14 +15,20 @@
 #include "../diagnostics/generator.h"
 
 // to keep track of the variables that are available in the current scope/function when generating LLVM IR
-static std::map<std::string, llvm::Value*> namedValues;
+static std::map<std::string, llvm::AllocaInst*> namedValues;
 
 // helper function to get the llvm::Type* from a type name/string
 static llvm::Type *getLLVMType(const std::string& type, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
     if (type == "i32") {
         return builder->getInt32Ty();
+    } else if (type == "i64") {
+        return builder->getInt64Ty();
     } else if (type == "f32") {
         return builder->getFloatTy();
+    } else if (type == "f64") {
+        return builder->getDoubleTy();
+    } else if (type == "char") {
+        return builder->getInt8Ty();
     } else {
         // return a void type
         return builder->getVoidTy();
@@ -45,6 +51,12 @@ static llvm::Value *getBooleanValue(llvm::Value *value, const std::unique_ptr<ll
         generator::fatal_error(std::chrono::high_resolution_clock::now(), "Cannot convert expression to boolean type", "The expression of type '" + stream.str() + "' could not be converted to boolean");
         return nullptr;
     }
+}
+
+// helper function to create an alloca instruction in the entry block of a function. Used with mutable variables
+static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *fn, const std::string& variableName, llvm::Type *type) {
+    llvm::IRBuilder<> temporaryBuilder(&fn->getEntryBlock(), fn->getEntryBlock().begin());
+    return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
 }
 
 enum CodegenResultType {
@@ -78,27 +90,8 @@ struct CodegenResult {
     ~CodegenResult() {}
 };
 
-enum ASTNodeType {
-    AST_VAR_EXPRESSION,
-    AST_NUMBER,
-    AST_STRING,
-    AST_BINARY_OPERATOR,
-    AST_UNARY_OPERATOR,
-    AST_COMPOUND_STATEMENT,
-    AST_PARAM,
-    AST_FN_PROTOTYPE,
-    AST_FN_DEFINITION,
-    AST_RETURN_STATEMENT,
-    AST_IF_STATEMENT,
-    AST_IF_ELSE_STATEMENT,
-    AST_FN_CALL
-};
-
 class ASTNode {
  public:
-    const ASTNodeType nodeType;
-
-    explicit ASTNode(ASTNodeType nodeType): nodeType(nodeType) {}
     virtual ~ASTNode() {}
 
     virtual void print(int depth) const = 0;
@@ -136,7 +129,7 @@ class ASTVariableExpression : public ASTNode {
     std::string identifier;
 
  public:
-    explicit ASTVariableExpression(std::string identifier): ASTNode(AST_VAR_EXPRESSION), identifier(identifier) {}
+    explicit ASTVariableExpression(std::string identifier): identifier(identifier) {}
     ~ASTVariableExpression() {}  // no child nodes
 
     void print(int depth) const override {
@@ -144,12 +137,12 @@ class ASTVariableExpression : public ASTNode {
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
-        llvm::Value *value = namedValues[identifier];
-        if (value == nullptr) {
+        llvm::AllocaInst *allocaInstance = namedValues[identifier];
+        if (allocaInstance == nullptr) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Unknown variable name", "The variable '" + identifier + "' could not be found");
             return nullptr;
         }
-        return std::make_unique<CodegenResult>(value, VALUE_CODEGEN_RESULT);
+        return std::make_unique<CodegenResult>(builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str()), VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -157,7 +150,7 @@ class ASTNumber : public ASTNode {
     int number;
 
  public:
-    explicit ASTNumber(int number): ASTNode(AST_STRING), number(number) {}
+    explicit ASTNumber(int number): number(number) {}
     ~ASTNumber() {}  // no child nodes
 
     void print(int depth) const override {
@@ -173,7 +166,7 @@ class ASTString : public ASTNode {
     std::string text;
 
  public:
-    explicit ASTString(std::string text): ASTNode(AST_NUMBER), text(text) {}
+    explicit ASTString(std::string text): text(text) {}
     ~ASTString() {}  // no child nodes
 
     void print(int depth) const override {
@@ -185,13 +178,29 @@ class ASTString : public ASTNode {
     }
 };
 
+class ASTChar : public ASTNode {
+    char character;
+
+ public:
+    explicit ASTChar(char character): character(character) {}
+    ~ASTChar() {}  // no child nodes
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Character: " << character << '\n';
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        return std::make_unique<CodegenResult>(builder->getInt8(character), VALUE_CODEGEN_RESULT);
+    }
+};
+
 class ASTCompoundStatement : public ASTNode {
     std::vector<ASTNode*> statementList;
 
  public:
-    explicit ASTCompoundStatement(std::vector<ASTNode*> statementList): ASTNode(AST_COMPOUND_STATEMENT), statementList(statementList) {}
+    explicit ASTCompoundStatement(std::vector<ASTNode*> statementList): statementList(statementList) {}
     // also add an empty constructor for no statements
-    ASTCompoundStatement(): ASTNode(AST_COMPOUND_STATEMENT) {}
+    ASTCompoundStatement() {}
     ~ASTCompoundStatement() {
         // delete each node the vector
         for (ASTNode *statement : statementList) {
@@ -208,12 +217,18 @@ class ASTCompoundStatement : public ASTNode {
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
-        // codegen node in the vector
+        // save the named values to be able to restore them later
+        std::map<std::string, llvm::AllocaInst*> savedNamedValues = namedValues;
+
+        // codegen each node in the vector
         for (ASTNode *statement : statementList) {
             statement->codegen(ctx, builder, moduleLLVM);
             // if the latest basic block has a terminal statement, then skip generating the rest
             if (builder->GetInsertBlock()->getTerminator()) return nullptr;
         }
+
+        // restore the named values
+        namedValues = savedNamedValues;
         return nullptr;
     }
 };
@@ -224,7 +239,7 @@ class ASTBinaryOperator : public ASTNode {
     std::string operation;
 
  public:
-    ASTBinaryOperator(ASTNode *left, ASTNode *right, std::string operation): ASTNode(AST_BINARY_OPERATOR), left(left), right(right), operation(operation) {}
+    ASTBinaryOperator(ASTNode *left, ASTNode *right, std::string operation): left(left), right(right), operation(operation) {}
     ~ASTBinaryOperator() {
         delete left;
         delete right;
@@ -277,7 +292,7 @@ class ASTUnaryOperator : public ASTNode {
     std::string operation;
 
  public:
-    ASTUnaryOperator(ASTNode *expression, std::string operation): ASTNode(AST_UNARY_OPERATOR), expression(expression), operation(operation) {}
+    ASTUnaryOperator(ASTNode *expression, std::string operation): expression(expression), operation(operation) {}
     ~ASTUnaryOperator() {
         delete expression;
     }
@@ -309,7 +324,7 @@ class ASTParameter : public ASTNode {
     std::string type;
 
  public:
-    ASTParameter(std::string identifier, std::string type): ASTNode(AST_PARAM), identifier(identifier), type(type) {}
+    ASTParameter(std::string identifier, std::string type): identifier(identifier), type(type) {}
     ~ASTParameter() {}  // no child nodes
 
     void print(int depth) const override {
@@ -329,7 +344,7 @@ class ASTFunctionPrototype : public ASTNode {
     std::string returnType;
 
  public:
-    ASTFunctionPrototype(std::string identifier, std::vector<ASTNode*> parameterList, std::string returnType): ASTNode(AST_FN_PROTOTYPE), identifier(identifier), parameterList(parameterList), returnType(returnType) {}
+    ASTFunctionPrototype(std::string identifier, std::vector<ASTNode*> parameterList, std::string returnType): identifier(identifier), parameterList(parameterList), returnType(returnType) {}
     ~ASTFunctionPrototype() {
         // delete each node the vector
         for (ASTNode *parameter : parameterList) {
@@ -387,7 +402,7 @@ class ASTFunctionDefinition : public ASTNode {
     ASTNode *body;
 
  public:
-    ASTFunctionDefinition(ASTNode *prototype, ASTNode *body): ASTNode(AST_FN_DEFINITION), prototype(prototype), body(body) {}
+    ASTFunctionDefinition(ASTNode *prototype, ASTNode *body): prototype(prototype), body(body) {}
     ~ASTFunctionDefinition() {
         delete prototype;
         delete body;
@@ -410,7 +425,9 @@ class ASTFunctionDefinition : public ASTNode {
         // set the named values for the parameters (before the body is generated)
         namedValues.clear();
         for (auto &arg : fn->args()) {
-            namedValues[std::string(arg.getName())] = &arg;
+            llvm::AllocaInst *allocaInstance = createEntryBlockAlloca(fn, std::string(arg.getName()), arg.getType());
+            builder->CreateStore(&arg, allocaInstance);
+            namedValues[std::string(arg.getName())] = allocaInstance;
         }
 
         body->codegen(ctx, builder, moduleLLVM);
@@ -431,7 +448,7 @@ class ASTReturnStatement : public ASTNode {
     ASTNode *expression;
 
  public:
-    explicit ASTReturnStatement(ASTNode *expression): ASTNode(AST_RETURN_STATEMENT), expression(expression) {}
+    explicit ASTReturnStatement(ASTNode *expression): expression(expression) {}
     ~ASTReturnStatement() {
         delete expression;
     }
@@ -449,12 +466,110 @@ class ASTReturnStatement : public ASTNode {
     }
 };
 
+class ASTVariableDeclaration : public ASTNode {
+    std::string identifier;
+    std::string type;
+
+ public:
+    ASTVariableDeclaration(std::string identifier, std::string type): identifier(identifier), type(type) {}
+    ~ASTVariableDeclaration() {}  // no child nodes
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Variable Declaration:\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Identifier: " << identifier << "\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << type << "\n";
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        if (namedValues[identifier] != nullptr) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Variable is already declared", "The variable '" + identifier + "' is already declared");
+            return nullptr;
+        }
+        // create an allocation for the variable. Do it in the entry block so that it can get optimized easily
+        llvm::AllocaInst *allocaInstance = createEntryBlockAlloca(builder->GetInsertBlock()->getParent(), identifier, getLLVMType(type, builder));
+        namedValues[identifier] = allocaInstance;
+        return nullptr;
+    }
+};
+
+class ASTVariableAssignment : public ASTNode {
+    std::string identifier;
+    ASTNode *expression;
+
+ public:
+    ASTVariableAssignment(std::string identifier, ASTNode *expression): identifier(identifier), expression(expression) {}
+    ~ASTVariableAssignment() {
+        delete expression;
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Variable Assignment:\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Identifier: " << identifier << "\n";
+        expression->print(depth + 1);
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        if (namedValues[identifier] == nullptr) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Variable is not declared", "Cannot assign a value to the variable '" + identifier + "' since it has not been declared");
+            return nullptr;
+        }
+        std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult->value->getType() != namedValues[identifier]->getAllocatedType()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in variable assignment", "Cannot assign a value to the variable '" + identifier + "' which has a different type");
+            return nullptr;
+        }
+        // store the value of the expression
+        builder->CreateStore(expressionResult->value, namedValues[identifier]);
+        return nullptr;
+    }
+};
+
+class ASTVariableDefinition : public ASTNode {
+    std::string identifier;
+    std::string type;
+    ASTNode *expression;
+
+ public:
+    ASTVariableDefinition(std::string identifier, std::string type, ASTNode *expression): identifier(identifier), type(type), expression(expression) {}
+    ~ASTVariableDefinition() {
+        delete expression;
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Variable Definition:\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Identifier: " << identifier << "\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << identifier << "\n";
+        expression->print(depth + 1);
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        if (namedValues[identifier] != nullptr) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Variable is already declared", "Cannot define the variable '" + identifier + "' since it is already declared");
+            return nullptr;
+        }
+        std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        // find the type of variable
+        llvm::Type* variableType = type == "auto" ? expressionResult->value->getType() : getLLVMType(type, builder);
+        if (expressionResult->value->getType() != variableType) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in variable definition", "The type of the expression does not match the type of definition for the variable '" + identifier + "'");
+            return nullptr;
+        }
+        // allocate space for the variable and store the value of the expression
+        llvm::AllocaInst *allocaInstance = createEntryBlockAlloca(builder->GetInsertBlock()->getParent(), identifier, variableType);
+        namedValues[identifier] = allocaInstance;
+        builder->CreateStore(expressionResult->value, allocaInstance);
+        return nullptr;
+    }
+};
+
 class ASTIfStatement : public ASTNode {
     ASTNode *expression;
     ASTNode *body;
 
  public:
-    explicit ASTIfStatement(ASTNode *expression, ASTNode *body): ASTNode(AST_IF_STATEMENT), expression(expression), body(body) {}
+    explicit ASTIfStatement(ASTNode *expression, ASTNode *body): expression(expression), body(body) {}
     ~ASTIfStatement() {
         delete expression;
         delete body;
@@ -469,6 +584,7 @@ class ASTIfStatement : public ASTNode {
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
 
@@ -504,7 +620,7 @@ class ASTIfElseStatement : public ASTNode {
     ASTNode *elseBody;
 
  public:
-    explicit ASTIfElseStatement(ASTNode *expression, ASTNode *thenBody, ASTNode *elseBody): ASTNode(AST_IF_ELSE_STATEMENT), expression(expression), thenBody(thenBody), elseBody(elseBody) {}
+    explicit ASTIfElseStatement(ASTNode *expression, ASTNode *thenBody, ASTNode *elseBody): expression(expression), thenBody(thenBody), elseBody(elseBody) {}
     ~ASTIfElseStatement() {
         delete expression;
         delete thenBody;
@@ -574,7 +690,7 @@ class ASTFunctionCall : public ASTNode {
     std::vector<ASTNode*> argumentList;
 
  public:
-    ASTFunctionCall(std::string identifier, std::vector<ASTNode*> argumentList): ASTNode(AST_FN_CALL), identifier(identifier), argumentList(argumentList) {}
+    ASTFunctionCall(std::string identifier, std::vector<ASTNode*> argumentList): identifier(identifier), argumentList(argumentList) {}
     ~ASTFunctionCall() {
         // delete each node the vector
         for (ASTNode *argument : argumentList) {

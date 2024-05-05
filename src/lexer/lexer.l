@@ -14,7 +14,7 @@
 %option yylineno
 
 /* Regex */
-type bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char
+type bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|auto|str
 identifier [A-Za-z_]+[0-9]*
 character ['][^'.][']
 integer_literal [0-9]+
@@ -32,18 +32,21 @@ or or|[|][|]
 "if" {return TOK_IF;}
 "else" {return TOK_ELSE;}
 "while" {return TOK_WHILE;}
+"while" {return TOK_FOR;}
 "fn" {return TOK_FN;}
 "true" {return TOK_TRUE;}
 "false" {return TOK_FALSE;}
 {not} {return TOK_NOT;}
 {and} {return TOK_AND;}
 {or} {return TOK_OR;}
+"~" {return TOK_TILDA;}
+"as" {return TOK_AS;}
 "==" {return TOK_DOUBLE_EQUALS;}
 "!=" {return TOK_NOT_EQUALS;}
-"<" {return TOK_LESS_THAN;}
-">" {return TOK_GREATER_THAN;}
 "<=" {return TOK_LESS_THAN_EQUALS;}
 ">=" {return TOK_GREATER_THAN_EQUALS;}
+"<" {return TOK_LESS_THAN;}
+">" {return TOK_GREATER_THAN;}
 "->" {return TOK_ARROW;}
 "=" {return TOK_EQUALS;}
 "+" {return TOK_PLUS;}

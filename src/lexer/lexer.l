@@ -32,7 +32,7 @@ or or|[|][|]
 "if" {return TOK_IF;}
 "else" {return TOK_ELSE;}
 "while" {return TOK_WHILE;}
-"while" {return TOK_FOR;}
+"for" {return TOK_FOR;}
 "fn" {return TOK_FN;}
 "true" {return TOK_TRUE;}
 "false" {return TOK_FALSE;}
@@ -49,6 +49,8 @@ or or|[|][|]
 ">" {return TOK_GREATER_THAN;}
 "->" {return TOK_ARROW;}
 "=" {return TOK_EQUALS;}
+"++" {return TOK_INCREMENT;}
+"--" {return TOK_DECREMENT;}
 "+" {return TOK_PLUS;}
 "-" {return TOK_HYPHEN;}
 "*" {return TOK_ASTERISK;}

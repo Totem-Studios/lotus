@@ -33,9 +33,9 @@ std::unique_ptr<AST> ast;
 %token<float_literal> TOK_FLOAT_LITERAL
 %token<str> TOK_IDENTIFIER TOK_TYPE TOK_STR_LITERAL TOK_F_STR_START TOK_F_STR_MIDDLE TOK_F_STR_END
 %token<character> TOK_CHAR_LITERAL
-%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS
+%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS TOK_INCREMENT TOK_DECREMENT
 
-%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall numericalExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3 variableDeclaration variableAssignment variableDefinition ifCompatibleStatement
+%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall numericalExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3 variableDeclaration variableAssignment variableDefinition ifCompatibleStatement whileLoop forLoop
 %type<nodeList> instanceStatementList localStatementList parameterList argumentList
 
 %start program
@@ -78,7 +78,8 @@ closedStatement
     | TOK_IF expression TOK_COLON closedStatement TOK_ELSE closedStatement {$$ = new ASTIfElseStatement($2, $4, $6);}
     | expression TOK_SEMICOLON {$$ = $1;}
     | returnStatement TOK_SEMICOLON {$$ = $1;}
-    | variableAssignment TOK_SEMICOLON {$$ = $1;}
+    | whileLoop {$$ = $1;}
+    | forLoop {$$ = $1;}
     | compoundStatement {$$ = $1;}
     ;
 
@@ -119,6 +120,14 @@ functionPrototype
     | TOK_FN TOK_IDENTIFIER TOK_L_PAREN parameterList TOK_R_PAREN TOK_ARROW TOK_TYPE {$$ = new ASTFunctionPrototype($2->getString(), $4->getVector(), $7->getString()); delete $2; delete $4; delete $7;}
     ;
 
+whileLoop
+    : TOK_WHILE expression compoundStatement {$$ = new ASTWhileLoop($2, $3);}
+    ;
+
+forLoop
+    : TOK_FOR variableDefinition TOK_SEMICOLON expression TOK_SEMICOLON expression compoundStatement {$$ = new ASTForLoop($2, $4, $6, $7);}
+    ;
+
 returnStatement
     : TOK_RETURN expression {$$ = new ASTReturnStatement($2);}
     ;
@@ -147,6 +156,7 @@ argumentList
 expression
     : numericalExpression {$$ = $1;}
     | booleanExpression {$$ = $1;}
+    | variableAssignment {$$ = $1;}
     | TOK_STR_LITERAL {$$ = new ASTString($1->getString()); delete $1;}
     | TOK_CHAR_LITERAL {$$ = new ASTChar($1);}
     ;
@@ -170,6 +180,7 @@ booleanExpression3
     | numericalExpression TOK_GREATER_THAN numericalExpression {$$ = new ASTBinaryOperator($1, $3, ">");}
     | numericalExpression TOK_LESS_THAN_EQUALS numericalExpression {$$ = new ASTBinaryOperator($1, $3, "<=");}
     | numericalExpression TOK_GREATER_THAN_EQUALS numericalExpression {$$ = new ASTBinaryOperator($1, $3, ">=");}
+    | TOK_L_PAREN booleanExpression TOK_R_PAREN {$$ = $2;}
     | TOK_TRUE {$$ = new ASTNumber(1);}
     | TOK_FALSE {$$ = new ASTNumber(0);}
     ;
@@ -193,6 +204,10 @@ factor
     | TOK_L_PAREN numericalExpression TOK_R_PAREN {$$ = $2;}
     | TOK_IDENTIFIER {$$ = new ASTVariableExpression($1->getString()); delete $1;}
     | functionCall {$$ = $1;}
+    | TOK_IDENTIFIER TOK_INCREMENT {$$ = new ASTIncrementDecrementOperator($1->getString(), "x++"); delete $1;}
+    | TOK_IDENTIFIER TOK_DECREMENT {$$ = new ASTIncrementDecrementOperator($1->getString(), "x--"); delete $1;}
+    | TOK_INCREMENT TOK_IDENTIFIER {$$ = new ASTIncrementDecrementOperator($2->getString(), "++x"); delete $2;}
+    | TOK_DECREMENT TOK_IDENTIFIER {$$ = new ASTIncrementDecrementOperator($2->getString(), "--x"); delete $2;}
     ;
 %%
 

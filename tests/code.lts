@@ -1,13 +1,7 @@
-fn sum(x: i32, y: i32) -> i32 {
-    x = x * 2;
-    ret x + y;
-}
-
 fn main() -> i32 {
-    foo: i32 = 10;
-    bar: i32;
-    bar = 20;
-    baz := bar + foo;
-    ret sum(foo, baz);
+    for i := 0; i < 10; i++ {
+        if i > 0: printf(", ");
+        printf("%d", i);
+    }
+    ret 42;
 }
-// returns 50

@@ -319,6 +319,60 @@ class ASTUnaryOperator : public ASTNode {
     }
 };
 
+class ASTIncrementDecrementOperator : public ASTNode {
+    std::string identifier;
+    std::string operation;
+
+ public:
+    explicit ASTIncrementDecrementOperator(std::string identifier, std::string operation): identifier(identifier), operation(operation) {}
+    ~ASTIncrementDecrementOperator() {}  // no child nodes
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Increment/Decrement Operator:\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Identifier: " << identifier << "\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Operator Type: " << operation << "\n";
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        llvm::Value *resultValue;
+        // get the alloca instance
+        llvm::AllocaInst *allocaInstance = namedValues[identifier];
+        if (allocaInstance == nullptr) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Unknown variable name", "The variable '" + identifier + "' could not be found");
+            return nullptr;
+        }
+        if (operation == "x++") {
+            // load the value
+            resultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
+            // increment the value by one
+            builder->CreateStore(builder->CreateAdd(resultValue, builder->getInt32(1), "incrementtmp"), allocaInstance);
+        } else if (operation == "x--") {
+            // load the value
+            resultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
+            // decrement the value by one
+            builder->CreateStore(builder->CreateSub(resultValue, builder->getInt32(1), "decrementtmp"), allocaInstance);
+        } else if (operation == "++x") {
+            // load the value
+            llvm::Value *tmpResultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
+            // increment the value by one and set to resultValue
+            resultValue = builder->CreateAdd(tmpResultValue, builder->getInt32(1), "incrementtmp");
+            // store the updated value
+            builder->CreateStore(resultValue, allocaInstance);
+        } else if (operation == "--x") {
+            // load the value
+            llvm::Value *tmpResultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
+            // decrement the value by one and set to resultValue
+            resultValue = builder->CreateSub(tmpResultValue, builder->getInt32(1), "decrementtmp");
+            // store the updated value
+            builder->CreateStore(resultValue, allocaInstance);
+        } else {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid increment/decrement operator", "The operator '" + operation + "' is not supported");
+            return nullptr;
+        }
+        return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
+    }
+};
+
 class ASTParameter : public ASTNode {
     std::string identifier;
     std::string type;
@@ -432,6 +486,13 @@ class ASTFunctionDefinition : public ASTNode {
 
         body->codegen(ctx, builder, moduleLLVM);
 
+        // if the function has a return type then check if the function has a return statement
+        llvm::Instruction *fnTerminator = builder->GetInsertBlock()->getTerminator();
+        if (fn->getReturnType() != builder->getVoidTy() && (fnTerminator == nullptr || !isa<llvm::ReturnInst>(fnTerminator))) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Function has no return statement", "The function '" + std::string(fn->getName()) + "' does not have a return statement");
+            return nullptr;
+        }
+
         // fill any empty blocks
         for (llvm::BasicBlock& block : *fn) {
             if (block.empty()) {
@@ -439,6 +500,129 @@ class ASTFunctionDefinition : public ASTNode {
                 builder->CreateUnreachable();
             }
         }
+
+        return nullptr;
+    }
+};
+
+class ASTWhileLoop : public ASTNode {
+    ASTNode *expression;
+    ASTNode *loopBody;
+
+ public:
+    explicit ASTWhileLoop(ASTNode *expression, ASTNode *loopBody): expression(expression), loopBody(loopBody) {}
+    ~ASTWhileLoop() {
+        delete expression;
+        delete loopBody;
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "While Loop:\n";
+        expression->print(depth + 1);
+        loopBody->print(depth + 1);
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        // create the branches
+        llvm::Function *fn = builder->GetInsertBlock()->getParent();
+        llvm::BasicBlock *conditionalBlock = llvm::BasicBlock::Create(*ctx, "loopcond", fn);
+        llvm::BasicBlock *loopBlock = llvm::BasicBlock::Create(*ctx, "loopbody", fn);
+        llvm::BasicBlock *mergeBlock = llvm::BasicBlock::Create(*ctx, "loopcont", fn);
+
+        // create the first branch
+        builder->CreateBr(conditionalBlock);
+
+        // emit the "loopcond" block
+        builder->SetInsertPoint(conditionalBlock);
+        // generate the condition
+        std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        // get the boolean value of the expression
+        llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
+        builder->CreateCondBr(condition, loopBlock, mergeBlock);
+
+        // emit the "loopbody" block
+        builder->SetInsertPoint(loopBlock);
+        loopBody->codegen(ctx, builder, moduleLLVM);
+        // update the loopBlock since the codegen of loopBody might change the current block
+        loopBlock = builder->GetInsertBlock();
+        llvm::Instruction *terminatorLoopBlock = loopBlock->getTerminator();
+        // if there is no return instruction then generate the branch instruction
+        if (terminatorLoopBlock == nullptr || !isa<llvm::ReturnInst>(terminatorLoopBlock)) builder->CreateBr(conditionalBlock);
+
+        // emit the "merge" block
+        builder->SetInsertPoint(mergeBlock);
+
+        return nullptr;
+    }
+};
+
+class ASTForLoop : public ASTNode {
+    ASTNode *initStatement;
+    ASTNode *expression;
+    ASTNode *updateStatement;
+    ASTNode *loopBody;
+
+ public:
+    explicit ASTForLoop(ASTNode *initStatement, ASTNode *expression, ASTNode *updateStatement, ASTNode *loopBody):  initStatement(initStatement), expression(expression), updateStatement(updateStatement), loopBody(loopBody) {}
+    ~ASTForLoop() {
+        delete initStatement;
+        delete expression;
+        delete updateStatement;
+        delete loopBody;
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "For Loop:\n";
+        initStatement->print(depth + 1);
+        expression->print(depth + 1);
+        updateStatement->print(depth + 1);
+        loopBody->print(depth + 1);
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        // create the branches
+        llvm::Function *fn = builder->GetInsertBlock()->getParent();
+        llvm::BasicBlock *conditionalBlock = llvm::BasicBlock::Create(*ctx, "loopcond", fn);
+        llvm::BasicBlock *loopBlock = llvm::BasicBlock::Create(*ctx, "loopbody", fn);
+        llvm::BasicBlock *mergeBlock = llvm::BasicBlock::Create(*ctx, "loopcont", fn);
+
+        // save the named values to be able to restore them later
+        std::map<std::string, llvm::AllocaInst*> savedNamedValues = namedValues;
+
+        // codegen the init statement (cannot contain return or anything alike)
+        initStatement->codegen(ctx, builder, moduleLLVM);
+
+        // create the first branch
+        builder->CreateBr(conditionalBlock);
+
+        // emit the "loopcond" block
+        builder->SetInsertPoint(conditionalBlock);
+        // generate the condition
+        std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        // get the boolean value of the expression
+        llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
+        builder->CreateCondBr(condition, loopBlock, mergeBlock);
+
+        // emit the "loopbody" block
+        builder->SetInsertPoint(loopBlock);
+        loopBody->codegen(ctx, builder, moduleLLVM);
+        // update the loopBlock since the codegen of loopBody might change the current block
+        loopBlock = builder->GetInsertBlock();
+        llvm::Instruction *terminatorLoopBlock = loopBlock->getTerminator();
+        // if there is no return instruction then generate the update statement and the branch instruction
+        if (terminatorLoopBlock == nullptr || !isa<llvm::ReturnInst>(terminatorLoopBlock)) {
+            // codegen the update statement (cannot contain return or anything alike)
+            updateStatement->codegen(ctx, builder, moduleLLVM);
+            builder->CreateBr(conditionalBlock);
+        }
+
+        // emit the "merge" block
+        builder->SetInsertPoint(mergeBlock);
+
+        // restore the named values
+        namedValues = savedNamedValues;
 
         return nullptr;
     }
@@ -461,6 +645,11 @@ class ASTReturnStatement : public ASTNode {
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        // check if the type of the return statement matches the return type of the parent function
+        if (expressionResult->value->getType() != builder->GetInsertBlock()->getParent()->getReturnType()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in return statement", "The type of the return statement does not match the return type of the parent function");
+            return nullptr;
+        }
         builder->CreateRet(expressionResult->value);
         return nullptr;
     }
@@ -599,16 +788,14 @@ class ASTIfStatement : public ASTNode {
         // emit the "then" block
         builder->SetInsertPoint(thenBlock);
         std::unique_ptr<CodegenResult> thenResult = body->codegen(ctx, builder, moduleLLVM);
-        if (!thenBlock->getTerminator()) builder->CreateBr(mergeBlock);
         // update the thenBlock since the codegen of thenBody might change the current block
         thenBlock = builder->GetInsertBlock();
+        llvm::Instruction *terminatorThenBlock = thenBlock->getTerminator();
+        // if there is no return instruction then generate the branch instruction
+        if (terminatorThenBlock == nullptr || !isa<llvm::ReturnInst>(terminatorThenBlock)) builder->CreateBr(mergeBlock);
 
         // emit the "merge" block
         builder->SetInsertPoint(mergeBlock);
-        // TODO(anyone) may be needed in the future when mutable variables are added:
-        // llvm::PHINode *phiNode = builder->CreatePHI(builder->getInt32Ty(), 2, "iftmp");
-        // phiNode->addIncoming(thenValue, thenBlock);
-        // phiNode->addIncoming(elseValue, elseBlock);
 
         return nullptr;
     }
@@ -652,34 +839,30 @@ class ASTIfElseStatement : public ASTNode {
         // emit the "then" block
         builder->SetInsertPoint(thenBlock);
         std::unique_ptr<CodegenResult> thenResult = thenBody->codegen(ctx, builder, moduleLLVM);
+        // update the thenBlock since the codegen of thenBody might change the current block
+        thenBlock = builder->GetInsertBlock();
         llvm::Instruction *terminatorThenBlock = thenBlock->getTerminator();
         // if there is no return instruction then generate the mergeBlock and branch instruction
         if (terminatorThenBlock == nullptr || !isa<llvm::ReturnInst>(terminatorThenBlock)) {
             mergeBlock = llvm::BasicBlock::Create(*ctx, "ifcont", fn);
             builder->CreateBr(mergeBlock);
         }
-        // update the thenBlock since the codegen of thenBody might change the current block
-        thenBlock = builder->GetInsertBlock();
 
         // emit the "else" block
         builder->SetInsertPoint(elseBlock);
         std::unique_ptr<CodegenResult> elseResult = elseBody->codegen(ctx, builder, moduleLLVM);
+        // update the elseBlock since the codegen of elseBody might change the current block
+        elseBlock = builder->GetInsertBlock();
         llvm::Instruction *terminatorElseBlock = elseBlock->getTerminator();
         // if there is no return instruction then generate the mergeBlock and branch instruction
         if (terminatorElseBlock == nullptr || !isa<llvm::ReturnInst>(terminatorElseBlock)) {
             if (!mergeBlock) mergeBlock = llvm::BasicBlock::Create(*ctx, "ifcont", fn);
             builder->CreateBr(mergeBlock);
         }
-        // update the elseBlock since the codegen of elseBody might change the current block
-        elseBlock = builder->GetInsertBlock();
 
         // emit the "merge" block if either the then or else blocks had a branch statement
         if (!mergeBlock) return nullptr;
         builder->SetInsertPoint(mergeBlock);
-        // TODO(anyone) may be needed in the future when mutable variables are added:
-        // llvm::PHINode *phiNode = builder->CreatePHI(builder->getInt32Ty(), 2, "iftmp");
-        // phiNode->addIncoming(thenValue, thenBlock);
-        // phiNode->addIncoming(elseValue, elseBlock);
 
         return nullptr;
     }
@@ -719,18 +902,32 @@ class ASTFunctionCall : public ASTNode {
             return nullptr;
         }
 
-        // if argument mismatch error.
-        if (calleeFn->arg_size() != argumentList.size()) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Incorrect arguments passed", "The arguments passed do not match the parameters of function '" + identifier + "'");
+
+        // get the number of parameters (including if it has a vararg)
+        unsigned numParams = calleeFn->getFunctionType()->getNumParams();
+        // check if the arguments length equals the amount of parameters, or it is greater than the amount of parameters if the function has varargs
+        bool argumentsLengthMatches = argumentList.size() == numParams || (calleeFn->isVarArg() && argumentList.size() >= numParams);
+        // check if they don't match
+        if (!argumentsLengthMatches) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Incorrect arguments passed", "The amount of arguments passed do not match the amount of parameters in the function '" + identifier + "'");
             return nullptr;
         }
 
-        std::vector<llvm::Value *> args;
+        // get the number of fixed parameters (all parameters except varargs)
+        unsigned numFixedParams = numParams - (calleeFn->isVarArg() ? 1 : 0);
 
         // generate the arguments
-        for (ASTNode *argument : argumentList) {
-            std::unique_ptr<CodegenResult> argumentResult = argument->codegen(ctx, builder, moduleLLVM);
+        std::vector<llvm::Value *> args;
+        for (int i = 0; i < argumentList.size(); i++) {
+            std::unique_ptr<CodegenResult> argumentResult = argumentList[i]->codegen(ctx, builder, moduleLLVM);
             if (argumentResult == nullptr || argumentResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+
+            // check if the argument type match the parameter type
+            if (i <= numFixedParams && argumentResult->value->getType() != calleeFn->getFunctionType()->getParamType(i)) {
+                generator::fatal_error(std::chrono::high_resolution_clock::now(), "Incorrect arguments passed", "The argument types do not match the parameter types of the function '" + identifier + "'");
+                return nullptr;
+            }
+
             args.push_back(argumentResult->value);
         }
 

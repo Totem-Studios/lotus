@@ -255,7 +255,14 @@ class ASTBinaryOperator : public ASTNode {
         std::unique_ptr<CodegenResult> leftResult = left->codegen(ctx, builder, moduleLLVM);
         std::unique_ptr<CodegenResult> rightResult = right->codegen(ctx, builder, moduleLLVM);
         // check if both the left and right results are valid
-        if (leftResult == nullptr || leftResult->resultType != VALUE_CODEGEN_RESULT || rightResult == nullptr || rightResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (leftResult == nullptr || leftResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid left hand side of binary operator", "The left hand side of the binary operator has an invalid value");
+            return nullptr;
+        }
+        if (rightResult == nullptr || rightResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid right hand side of binary operator", "The right hand side of the binary operator has an invalid value");
+            return nullptr;
+        }
         llvm::Value *resultValue;
         if (operation == "+") {
             resultValue = builder->CreateAdd(leftResult->value, rightResult->value, "addtmp");
@@ -305,7 +312,9 @@ class ASTUnaryOperator : public ASTNode {
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         // check if the expression result is valid
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in unary operator", "The expression in the unary operator has an invalid value");
+        }
         llvm::Value *resultValue;
         if (operation == "!") {
             resultValue = builder->CreateNot(expressionResult->value, "nottmp");
@@ -486,20 +495,15 @@ class ASTFunctionDefinition : public ASTNode {
 
         body->codegen(ctx, builder, moduleLLVM);
 
-        // if the function has a return type then check if the function has a return statement
+        // if the function has a non-void return type then check if the function has a return statement
         llvm::Instruction *fnTerminator = builder->GetInsertBlock()->getTerminator();
         if (fn->getReturnType() != builder->getVoidTy() && (fnTerminator == nullptr || !isa<llvm::ReturnInst>(fnTerminator))) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Function has no return statement", "The function '" + std::string(fn->getName()) + "' does not have a return statement");
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Missing return statement in function", "The function '" + std::string(fn->getName()) + "' has a non-void return type but does not have a return statement for each possible branch of execution");
             return nullptr;
         }
 
-        // fill any empty blocks
-        for (llvm::BasicBlock& block : *fn) {
-            if (block.empty()) {
-                builder->SetInsertPoint(&block);
-                builder->CreateUnreachable();
-            }
-        }
+        // if the current block (last block to finish codegen in the function) is empty, then insert a void return
+        if (builder->GetInsertBlock()->empty()) builder->CreateRetVoid();
 
         return nullptr;
     }
@@ -536,7 +540,10 @@ class ASTWhileLoop : public ASTNode {
         builder->SetInsertPoint(conditionalBlock);
         // generate the condition
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in while loop", "The expression in the while loop has an invalid value");
+            return nullptr;
+        }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
         builder->CreateCondBr(condition, loopBlock, mergeBlock);
@@ -600,7 +607,10 @@ class ASTForLoop : public ASTNode {
         builder->SetInsertPoint(conditionalBlock);
         // generate the condition
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in for loop", "The expression in the for loop has an invalid value");
+            return nullptr;
+        }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
         builder->CreateCondBr(condition, loopBlock, mergeBlock);
@@ -629,28 +639,44 @@ class ASTForLoop : public ASTNode {
 };
 
 class ASTReturnStatement : public ASTNode {
-    ASTNode *expression;
+    ASTNode* expression;
+    bool hasExpression;
 
  public:
-    explicit ASTReturnStatement(ASTNode *expression): expression(expression) {}
+    explicit ASTReturnStatement(ASTNode *expression): expression(expression), hasExpression(true) {}
+    explicit ASTReturnStatement(): hasExpression(false) {}
     ~ASTReturnStatement() {
-        delete expression;
+        if (hasExpression) delete expression;
     }
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Return Statement:\n";
-        expression->print(depth + 1);
+        if (hasExpression) expression->print(depth + 1);
+        else std::cout << std::string((depth + 1) * 2, ' ') << "No Expression\n";
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
-        std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
-        // check if the type of the return statement matches the return type of the parent function
-        if (expressionResult->value->getType() != builder->GetInsertBlock()->getParent()->getReturnType()) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in return statement", "The type of the return statement does not match the return type of the parent function");
+        llvm::Type *returnType;
+        if (hasExpression) {
+            std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
+            if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+                generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in return statement", "The return statement does not have a valid expression");
+                return nullptr;
+            }
+            builder->CreateRet(expressionResult->value);
+            returnType = expressionResult->value->getType();
+        } else {
+            // if the return statement has no expression then generate a void return
+            builder->CreateRetVoid();
+            returnType = builder->getVoidTy();
+        }
+
+        // check if the types match
+        if (returnType != builder->GetInsertBlock()->getParent()->getReturnType()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in return statement", "The type of the return statement does not match the return type of the parent function '" + std::string(builder->GetInsertBlock()->getParent()->getName()) + "'");
             return nullptr;
         }
-        builder->CreateRet(expressionResult->value);
+
         return nullptr;
     }
 };
@@ -703,14 +729,17 @@ class ASTVariableAssignment : public ASTNode {
             return nullptr;
         }
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in variable assignment", "The expression in an assignment of variable '" + identifier + "' has an invalid value");
+            return nullptr;
+        }
         if (expressionResult->value->getType() != namedValues[identifier]->getAllocatedType()) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in variable assignment", "Cannot assign a value to the variable '" + identifier + "' which has a different type");
             return nullptr;
         }
         // store the value of the expression
         builder->CreateStore(expressionResult->value, namedValues[identifier]);
-        return nullptr;
+        return std::make_unique<CodegenResult>(expressionResult->value, VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -738,7 +767,10 @@ class ASTVariableDefinition : public ASTNode {
             return nullptr;
         }
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in variable definition", "The expression in a variable definition for the variable '" + identifier + "' has an invalid value");
+            return nullptr;
+        }
         // find the type of variable
         llvm::Type* variableType = type == "auto" ? expressionResult->value->getType() : getLLVMType(type, builder);
         if (expressionResult->value->getType() != variableType) {
@@ -772,7 +804,10 @@ class ASTIfStatement : public ASTNode {
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in if statement", "The expression in the if statement has an invalid value");
+            return nullptr;
+        }
 
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
@@ -823,7 +858,10 @@ class ASTIfElseStatement : public ASTNode {
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
-        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in if-else statement", "The expression in the if-else statement has an invalid value");
+            return nullptr;
+        }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
 
@@ -920,7 +958,10 @@ class ASTFunctionCall : public ASTNode {
         std::vector<llvm::Value *> args;
         for (int i = 0; i < argumentList.size(); i++) {
             std::unique_ptr<CodegenResult> argumentResult = argumentList[i]->codegen(ctx, builder, moduleLLVM);
-            if (argumentResult == nullptr || argumentResult->resultType != VALUE_CODEGEN_RESULT) return nullptr;
+            if (argumentResult == nullptr || argumentResult->resultType != VALUE_CODEGEN_RESULT) {
+                generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid function argument", "The " + std::to_string(i + 1) + "'th argument of the function '" + identifier + "' has an invalid value");
+                return nullptr;
+            }
 
             // check if the argument type match the parameter type
             if (i <= numFixedParams && argumentResult->value->getType() != calleeFn->getFunctionType()->getParamType(i)) {
@@ -930,7 +971,11 @@ class ASTFunctionCall : public ASTNode {
 
             args.push_back(argumentResult->value);
         }
-
+        // if the function has a void return type then just return nullptr else return the call result
+        if (calleeFn->getFunctionType()->getReturnType() == builder->getVoidTy()) {
+            builder->CreateCall(calleeFn, args);
+            return nullptr;
+        }
         return std::make_unique<CodegenResult>(builder->CreateCall(calleeFn, args, "calltmp"), VALUE_CODEGEN_RESULT);
     }
 };

@@ -130,6 +130,7 @@ forLoop
 
 returnStatement
     : TOK_RETURN expression {$$ = new ASTReturnStatement($2);}
+    | TOK_RETURN {$$ = new ASTReturnStatement();}
     ;
 
 parameterList

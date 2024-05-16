@@ -1,3 +1,18 @@
-fn main() {
-    ret;
+fn main() -> i32 {
+    x: i32 = 10;
+    {
+        x: i32 = 50;
+        {
+            x: i32 = 100;
+            printf("x is %d\n", x);
+        }
+        printf("x is %d\n", x);
+    }
+    printf("x is %d", x);
+    ret 0;
 }
+/* prints
+x is 100
+x is 50
+x is 10
+*/

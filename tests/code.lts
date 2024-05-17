@@ -1,7 +1,18 @@
 fn main() -> i32 {
-    for i := 0; i < 10; i++ {
-        if i > 0: printf(", ");
-        printf("%d", i);
+    x: i32 = 10;
+    {
+        x: i32 = 50;
+        {
+            x: i32 = 100;
+            printf("x is %d\n", x);
+        }
+        printf("x is %d\n", x);
     }
-    ret 42;
+    printf("x is %d", x);
+    ret 0;
 }
+/* prints
+x is 100
+x is 50
+x is 10
+*/

@@ -17,6 +17,8 @@
 type bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|auto|str
 identifier [A-Za-z_]+[0-9]*
 character ['][^'.][']
+/* a string but with single quotes (to handle errors) */
+invalid_character ['][^".]*[']
 integer_literal [0-9]+
 float_literal [0-9]*\.[0-9]+
 string ["][^".]*["]
@@ -72,7 +74,10 @@ or or|[|][|]
 {multi_line_comment} {}
 {one_line_comment} {}
 [ \t\r\n] {}
-. {syntax::nonfatal_error(std::chrono::high_resolution_clock::now(), "Unrecognized token", "The following characters could not be defined as a token: ", yytext);}
+{invalid_character} {syntax::nonfatal_error(std::chrono::high_resolution_clock::now(), "Invalid character literal", "A character literal was found on line " + std::to_string(yylineno) + " with more then one character in it");}
+"\"" {syntax::nonfatal_error(std::chrono::high_resolution_clock::now(), "Unmatched double quote", "An unmatched double quote was found on line " + std::to_string(yylineno));}
+"'" {syntax::nonfatal_error(std::chrono::high_resolution_clock::now(), "Unmatched single quote", "An unmatched single quote was found on line " + std::to_string(yylineno));}
+. {syntax::nonfatal_error(std::chrono::high_resolution_clock::now(), "Unrecognized token", "The following characters could not be defined as a token at line " + std::to_string(yylineno) + ": ", yytext);}
 %%
 
 // flex uses this when it encounters end of file, to check if it should continue to another file

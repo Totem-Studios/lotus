@@ -4,6 +4,7 @@
 
 #include <iostream>
 #include <memory>
+#include <ranges>
 #include <vector>
 #include <map>
 
@@ -18,10 +19,9 @@
 static std::vector<std::map<std::string, llvm::AllocaInst*>> scopeStack;
 
 // helper function to find a variable in the scopeStack
-static llvm::AllocaInst* getAllocaInst(const std::string& identifier) {
-    // go over each scope and check if the variable is defined
-    for (int i = scopeStack.size() - 1; i >= 0; i--) {
-        auto& scope = scopeStack[i];
+static llvm::AllocaInst *getAllocaInst(const std::string& identifier) {
+    // go over each scope and check if the variable is defined (reverse the scopeStack to check the most nested scopes first)
+    for (auto& scope : std::ranges::reverse_view(scopeStack)) {
         auto it = scope.find(identifier);
         if (it != scope.end()) return it->second;
     }
@@ -36,7 +36,13 @@ static void setAllocaInst(const std::string& identifier, llvm::AllocaInst* alloc
 
 // helper function to get the llvm::Type* from a type name/string
 static llvm::Type *getLLVMType(const std::string& type, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
-    if (type == "i32") {
+    if (type == "bool") {
+        return builder->getInt1Ty();
+    } else if (type == "i8") {
+        return builder->getInt8Ty();
+    } else if (type == "i16") {
+        return builder->getInt16Ty();
+    } else if (type == "i32") {
         return builder->getInt32Ty();
     } else if (type == "i64") {
         return builder->getInt64Ty();
@@ -46,28 +52,75 @@ static llvm::Type *getLLVMType(const std::string& type, const std::unique_ptr<ll
         return builder->getDoubleTy();
     } else if (type == "char") {
         return builder->getInt8Ty();
+    } else if (type == "str") {
+        return builder->getPtrTy();
     } else {
         // return a void type
         return builder->getVoidTy();
     }
 }
 
-// helper function for converting llvm value to boolean type
-static llvm::Value *getBooleanValue(llvm::Value *value, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
-    if (value->getType()->isIntegerTy(32)) {
-        // convert from i32 to boolean (i1)
-        return builder->CreateICmpNE(value, builder->getInt32(0), "ifcond");
-    } else if (value->getType()->isIntegerTy(1)) {
-        // is already a boolean type (i1)
-        return value;
+// helper function to get the llvm::Value* from an integer (since it might vary in bit-width)
+static llvm::Value *getIntegerValue(uint64_t number, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+    if (number <= 2147483647) {
+        // limit for signed i32
+        return builder->getInt32(number);
+    } else if (number <= 9223372036854775807) {
+        // limit for signed i64
+        return builder->getInt64(number);
     } else {
-        // throw an error since the type cannot be converted to boolean
-        std::string stringType;
-        llvm::raw_string_ostream stream(stringType);
-        value->getType()->print(stream);
-        generator::fatal_error(std::chrono::high_resolution_clock::now(), "Cannot convert expression to boolean type", "The expression of type '" + stream.str() + "' could not be converted to boolean");
+        generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid integer literal", "The integer is to large to be represented as an integer");
         return nullptr;
     }
+}
+
+// helper function to create a llvm cast instruction
+static llvm::Value *createCast(llvm::Value *value, llvm::Type *type, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+    llvm::Type *srcType = value->getType();
+
+    if (srcType == type) {
+        // no cast needed
+        return value;
+    }
+
+    // if the source type is bool
+    if (srcType->isIntegerTy(1)) {
+        if (type->isIntegerTy()) {
+            return builder->CreateCast(llvm::Instruction::ZExt, value, type, "tmpcast");
+        } else if (type->isFloatingPointTy()) {
+            return builder->CreateCast(llvm::Instruction::UIToFP, value, type, "tmpcast");
+        }
+    }
+
+    // if destination type is bool, then check if the value does not equal 0
+    if (type->isIntegerTy(1)) {
+        if (srcType->isIntegerTy()) {
+            return builder->CreateICmpNE(value, llvm::ConstantInt::get(srcType, 0), "cmptozero");
+        } else if (srcType->isFloatingPointTy()) {
+            return builder->CreateFCmpONE(value, llvm::ConstantFP::get(srcType, 0), "cmptozero");
+        }
+    }
+
+    // if the src type is int or float and type is int or float
+    if ((srcType->isIntegerTy() || srcType->isFloatingPointTy()) && (type->isIntegerTy() || type->isFloatingPointTy())) {
+        llvm::CastInst::CastOps castOperation = llvm::CastInst::getCastOpcode(value, true, type, true);
+        return builder->CreateCast(castOperation, value, type, "tmpcast");
+    }
+
+    // throw error, cast is not supported
+    std::string stringSrcType;
+    std::string stringType;
+    llvm::raw_string_ostream stream1(stringSrcType);
+    llvm::raw_string_ostream stream2(stringType);
+    srcType->print(stream1);
+    type->print(stream2);
+    generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid cast", "Cannot cast from '" + stringSrcType + "' to '" + stringType + "'");
+    return nullptr;
+}
+
+// helper function for getting the boolean representation of a llvm::Value
+static llvm::Value *getBooleanValue(llvm::Value *value, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+    return createCast(value, builder->getInt1Ty(), builder);
 }
 
 // helper function to create an alloca instruction in the entry block of a function. Used with mutable variables
@@ -163,19 +216,51 @@ class ASTVariableExpression : public ASTNode {
     }
 };
 
-class ASTNumber : public ASTNode {
-    int number;
+class ASTInteger : public ASTNode {
+    uint64_t number;
 
  public:
-    explicit ASTNumber(int number): number(number) {}
-    ~ASTNumber() {}  // no child nodes
+    explicit ASTInteger(uint64_t number): number(number) {}
+    ~ASTInteger() {}  // no child nodes
 
     void print(int depth) const override {
-        std::cout << std::string(depth * 2, ' ') << "Number: " << number << '\n';
+        std::cout << std::string(depth * 2, ' ') << "Integer: " << number << '\n';
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
-        return std::make_unique<CodegenResult>(builder->getInt32(number), VALUE_CODEGEN_RESULT);
+        return std::make_unique<CodegenResult>(getIntegerValue(number, builder), VALUE_CODEGEN_RESULT);
+    }
+};
+
+class ASTBool : public ASTNode {
+    bool value;
+
+ public:
+    explicit ASTBool(bool value): value(value) {}
+    ~ASTBool() {}  // no child nodes
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Boolean: " << value << '\n';
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        return std::make_unique<CodegenResult>(builder->getInt1(value), VALUE_CODEGEN_RESULT);
+    }
+};
+
+class ASTFloat : public ASTNode {
+    double number;
+
+ public:
+    explicit ASTFloat(double number): number(number) {}
+    ~ASTFloat() {}  // no child nodes
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Float: " << number << '\n';
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        return std::make_unique<CodegenResult>(llvm::ConstantFP::get(builder->getDoubleTy(), number), VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -208,6 +293,31 @@ class ASTChar : public ASTNode {
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
         return std::make_unique<CodegenResult>(builder->getInt8(character), VALUE_CODEGEN_RESULT);
+    }
+};
+
+class ASTTypeCast : public ASTNode {
+    ASTNode *expression;
+    std::string type;
+
+ public:
+    explicit ASTTypeCast(ASTNode *expression, std::string type): expression(expression), type(type) {}
+    ~ASTTypeCast() {
+        delete expression;
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Type Cast: " << type << '\n';
+        expression->print(depth + 1);
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
+        // check if the expression result is valid
+        if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in type cast operator", "The expression in the type cast has an invalid value");
+        }
+        return std::make_unique<CodegenResult>(createCast(expressionResult->value, getLLVMType(type, builder), builder), VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -273,38 +383,99 @@ class ASTBinaryOperator : public ASTNode {
         std::unique_ptr<CodegenResult> rightResult = right->codegen(ctx, builder, moduleLLVM);
         // check if both the left and right results are valid
         if (leftResult == nullptr || leftResult->resultType != VALUE_CODEGEN_RESULT) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid left hand side of binary operator", "The left hand side of the binary operator has an invalid value");
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid left hand side of binary operator", "The left hand side of the binary operator '" + operation + "' has an invalid value");
             return nullptr;
         }
         if (rightResult == nullptr || rightResult->resultType != VALUE_CODEGEN_RESULT) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid right hand side of binary operator", "The right hand side of the binary operator has an invalid value");
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid right hand side of binary operator", "The right hand side of the binary operator '" + operation + "' has an invalid value");
             return nullptr;
         }
-        llvm::Value *resultValue;
+        // check if the left and right expression have the same type
+        if (leftResult->value->getType() != rightResult->value->getType()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in binary operation", "The left and right hand sides of the binary operator '" + operation + "' have different types");
+            return nullptr;
+        }
+        bool isFloatingPointOperation = leftResult->value->getType()->isFloatingPointTy();
+        // if it is an integer that is not an i1 (boolean)
+        bool isIntegerOperation = leftResult->value->getType()->isIntegerTy() && !leftResult->value->getType()->isIntegerTy(1);
+        llvm::Value *resultValue = nullptr;
         if (operation == "+") {
-            resultValue = builder->CreateAdd(leftResult->value, rightResult->value, "addtmp");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFAdd(leftResult->value, rightResult->value, "addfloattmp");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateAdd(leftResult->value, rightResult->value, "addtmp");
+            }
         } else if (operation == "-") {
-            resultValue = builder->CreateSub(leftResult->value, rightResult->value, "subtmp");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFSub(leftResult->value, rightResult->value, "subfloattmp");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateSub(leftResult->value, rightResult->value, "subtmp");
+            }
         } else if (operation == "*") {
-            resultValue = builder->CreateMul(leftResult->value, rightResult->value, "multmp");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFMul(leftResult->value, rightResult->value, "mulfloattmp");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateMul(leftResult->value, rightResult->value, "multmp");
+            }
+        } else if (operation == "/") {
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFDiv(leftResult->value, rightResult->value, "divfloattmp");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateSDiv(leftResult->value, rightResult->value, "divtmp");
+            }
+        } else if (operation == "%") {
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFRem(leftResult->value, rightResult->value, "remfloattmp");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateSRem(leftResult->value, rightResult->value, "remtmp");
+            }
         } else if (operation == "==") {
-            resultValue = builder->CreateICmpEQ(leftResult->value, rightResult->value, "cmptmpequals");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFCmpOEQ(leftResult->value, rightResult->value, "cmpfloattmpequals");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateICmpEQ(leftResult->value, rightResult->value, "cmptmpequals");
+            }
         } else if (operation == "!=") {
-            resultValue = builder->CreateICmpNE(leftResult->value, rightResult->value, "cmptmpnotequals");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFCmpONE(leftResult->value, rightResult->value, "cmpfloattmpnotequals");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateICmpNE(leftResult->value, rightResult->value, "cmptmpnotequals");
+            }
         } else if (operation == "<") {
-            resultValue = builder->CreateICmpSLT(leftResult->value, rightResult->value, "cmptmpless");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFCmpOLT(leftResult->value, rightResult->value, "cmpfloattmpless");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateICmpSLT(leftResult->value, rightResult->value, "cmptmpless");
+            }
         } else if (operation == ">") {
-            resultValue = builder->CreateICmpSGT(leftResult->value, rightResult->value, "cmptmpgreater");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFCmpOGT(leftResult->value, rightResult->value, "cmpfloattmpgreater");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateICmpSGT(leftResult->value, rightResult->value, "cmptmpgreater");
+            }
         } else if (operation == "<=") {
-            resultValue = builder->CreateICmpSLE(leftResult->value, rightResult->value, "cmptmplessequals");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFCmpOLE(leftResult->value, rightResult->value, "cmpfloattmplessequals");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateICmpSLE(leftResult->value, rightResult->value, "cmptmplessequals");
+            }
         } else if (operation == ">=") {
-            resultValue = builder->CreateICmpSGE(leftResult->value, rightResult->value, "cmptmpgreaterequals");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFCmpOGE(leftResult->value, rightResult->value, "cmpfloattmpgreaterequals");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateICmpSGE(leftResult->value, rightResult->value, "cmptmpgreaterequals");
+            }
         } else if (operation == "&&") {
-            resultValue = builder->CreateAnd(leftResult->value, rightResult->value, "andtmp");
+            resultValue = builder->CreateAnd(getBooleanValue(leftResult->value, builder), getBooleanValue(rightResult->value, builder), "andtmp");
         } else if (operation == "||") {
-            resultValue = builder->CreateOr(leftResult->value, rightResult->value, "ortmp");
-        } else {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid binary operator", "The operator '" + operation + "' is not supported");
+            resultValue = builder->CreateOr(getBooleanValue(leftResult->value, builder), getBooleanValue(rightResult->value, builder), "ortmp");
+        }
+        // check if the resultValue is a nullptr, then throw an error
+        if (!resultValue) {
+            std::string stringType;
+            llvm::raw_string_ostream stream(stringType);
+            leftResult->value->getType()->print(stream);
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid binary operator", "The binary operator '" + operation + "' is not supported with the type '" + stringType + "'");
             return nullptr;
         }
         return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
@@ -330,16 +501,30 @@ class ASTUnaryOperator : public ASTNode {
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         // check if the expression result is valid
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in unary operator", "The expression in the unary operator has an invalid value");
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in unary operator", "The expression in the unary operator '" + operation + "' has an invalid value");
         }
-        llvm::Value *resultValue;
+        bool isFloatingPointOperation = expressionResult->value->getType()->isFloatingPointTy();
+        bool isIntegerOperation = expressionResult->value->getType()->isIntegerTy();
+        llvm::Value *resultValue = nullptr;
         if (operation == "!") {
-            resultValue = builder->CreateNot(expressionResult->value, "nottmp");
+            resultValue = builder->CreateNot(getBooleanValue(expressionResult->value, builder), "nottmp");
         } else if (operation == "-") {
-            resultValue = builder->CreateNeg(expressionResult->value, "negtmp");
+            if (isFloatingPointOperation) {
+                resultValue = builder->CreateFNeg(expressionResult->value, "negtmp");
+            } else if (isIntegerOperation) {
+                resultValue = builder->CreateNeg(expressionResult->value, "negtmp");
+            }
         } else if (operation == "+") {
-            // does not change the value
-            resultValue = expressionResult->value;
+            // does not change the value (but check if it is used with valid types anyway)
+            if (isFloatingPointOperation || isIntegerOperation) resultValue = expressionResult->value;
+        }
+        // check if the resultValue is a nullptr, then throw an error
+        if (!resultValue) {
+            std::string stringType;
+            llvm::raw_string_ostream stream(stringType);
+            expressionResult->value->getType()->print(stream);
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid unary operator", "The unary operator '" + operation + "' is not supported with the type '" + stringType + "'");
+            return nullptr;
         }
         return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
     }
@@ -360,36 +545,49 @@ class ASTIncrementDecrementOperator : public ASTNode {
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
-        llvm::Value *resultValue;
         // get the alloca instance
         llvm::AllocaInst *allocaInstance = getAllocaInst(identifier);
         if (allocaInstance == nullptr) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Unknown variable name", "The variable '" + identifier + "' could not be found");
             return nullptr;
         }
+
+        // load the value
+        llvm::Value *loadedValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
+
+        llvm::Type *loadedValueType = loadedValue->getType();
+        bool isIntegerType = loadedValueType->isIntegerTy();
+        bool isFloatingPointType = loadedValueType->isFloatingPointTy();
+        if (!isIntegerType && !isFloatingPointType) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid use of increment/decrement operator", "The variable '" + identifier + "' is not an integer or floating point value");
+            return nullptr;
+        }
+
+        // to store the resulting value of the operation
+        llvm::Value *resultValue;
         if (operation == "x++") {
-            // load the value
-            resultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
-            // increment the value by one
-            builder->CreateStore(builder->CreateAdd(resultValue, builder->getInt32(1), "incrementtmp"), allocaInstance);
+            // set the resultValue to loaded value
+            resultValue = loadedValue;
+            // increment the value by one and store it
+            builder->CreateStore(
+                isIntegerType ? builder->CreateAdd(loadedValue, llvm::ConstantInt::get(loadedValueType, 1), "incrementtmp") : builder->CreateFAdd(loadedValue, llvm::ConstantFP::get(loadedValueType, 1), "incrementfloattmp"),
+                allocaInstance);
         } else if (operation == "x--") {
-            // load the value
-            resultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
-            // decrement the value by one
-            builder->CreateStore(builder->CreateSub(resultValue, builder->getInt32(1), "decrementtmp"), allocaInstance);
+            // set the resultValue to loaded value
+            resultValue = loadedValue;
+            // decrement the value by one and store it
+            builder->CreateStore(
+                isIntegerType ? builder->CreateSub(loadedValue, llvm::ConstantInt::get(loadedValueType, 1), "decrementtmp") : builder->CreateFSub(loadedValue, llvm::ConstantFP::get(loadedValueType, 1), "decrementfloattmp"),
+                allocaInstance);
         } else if (operation == "++x") {
-            // load the value
-            llvm::Value *tmpResultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
-            // increment the value by one and set to resultValue
-            resultValue = builder->CreateAdd(tmpResultValue, builder->getInt32(1), "incrementtmp");
-            // store the updated value
+            // increment the value by one and set it to resultValue
+            resultValue = isIntegerType ? builder->CreateAdd(loadedValue, llvm::ConstantInt::get(loadedValueType, 1), "incrementtmp") : builder->CreateFAdd(loadedValue, llvm::ConstantFP::get(loadedValueType, 1), "incrementfloattmp");
+            // store the result value
             builder->CreateStore(resultValue, allocaInstance);
         } else if (operation == "--x") {
-            // load the value
-            llvm::Value *tmpResultValue = builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str());
-            // decrement the value by one and set to resultValue
-            resultValue = builder->CreateSub(tmpResultValue, builder->getInt32(1), "decrementtmp");
-            // store the updated value
+            // decrement the value by one and set it to resultValue
+            resultValue = isIntegerType ? builder->CreateSub(loadedValue, llvm::ConstantInt::get(loadedValueType, 1), "decrementtmp") : builder->CreateFSub(loadedValue, llvm::ConstantFP::get(loadedValueType, 1), "decrementfloattmp");
+            // store the result value
             builder->CreateStore(resultValue, allocaInstance);
         } else {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid increment/decrement operator", "The operator '" + operation + "' is not supported");
@@ -445,10 +643,11 @@ class ASTFunctionPrototype : public ASTNode {
             std::cout << std::string((depth + 1) * 2, ' ') << "No Parameters\n";
         }
         // check if string is not empty
-        if (!returnType.empty())
+        if (!returnType.empty()) {
             std::cout << std::string((depth + 1) * 2, ' ') << "Return type: " << returnType << "\n";
-        else
+        } else {
             std::cout << std::string((depth + 1) * 2, ' ') << "No Return Type\n";
+        }
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
@@ -468,8 +667,16 @@ class ASTFunctionPrototype : public ASTNode {
             paramTypes.push_back(parameterResult->param.type);
         }
 
+        // check if the name is main and the return type is not i32 (or empty, because then it defaults to i32)
+        if (identifier == "main" && !(returnType == "i32" || returnType.empty())) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid return type", "The main function can only return i32");
+            return nullptr;
+        }
+
+        // get the llvm return type (if the identifier is main, then default to an i32)
+        llvm::Type *llvmReturnType = identifier == "main" ? builder->getInt32Ty() : getLLVMType(returnType, builder);
         // return type, parameters, varargs
-        llvm::FunctionType *fnType = llvm::FunctionType::get(getLLVMType(returnType, builder), paramTypes, false);
+        llvm::FunctionType *fnType = llvm::FunctionType::get(llvmReturnType, paramTypes, false);
         llvm::Function *fn = llvm::Function::Create(fnType, llvm::Function::ExternalLinkage, identifier, *moduleLLVM);
 
         // set the parameter names
@@ -518,17 +725,27 @@ class ASTFunctionDefinition : public ASTNode {
 
         body->codegen(ctx, builder, moduleLLVM);
 
-        // if the function has a non-void return type then check if the function has a return statement
+        // check if the function is the main function
+        bool isMainFunction = fn->getName() == llvm::StringRef("main");
+
+        // if the function has a non-void return type (ignore all of this if it is the main function) then check if the function has a return statement
         llvm::Instruction *fnTerminator = builder->GetInsertBlock()->getTerminator();
-        if (fn->getReturnType() != builder->getVoidTy() && (fnTerminator == nullptr || !isa<llvm::ReturnInst>(fnTerminator))) {
+        if (!isMainFunction && fn->getReturnType() != builder->getVoidTy() && (fnTerminator == nullptr || !isa<llvm::ReturnInst>(fnTerminator))) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(),
                 "Missing return statement in function",
                 "The function '" + std::string(fn->getName()) + "' has a non-void return type but does not have a return statement for each possible branch of execution");
             return nullptr;
         }
 
-        // if the current block (last block to finish codegen in the function) is empty, then insert a void return
-        if (builder->GetInsertBlock()->empty()) builder->CreateRetVoid();
+        // if the current block (last block to finish codegen in the function) does not have a terminator statement (check for any terminator and not just return statements)
+        if (fnTerminator == nullptr) {
+            // if the function name is main, then insert a return of 0, else just insert a return of void
+            if (isMainFunction) {
+                builder->CreateRet(builder->getInt32(0));
+            } else {
+                builder->CreateRetVoid();
+            }
+        }
 
         return nullptr;
     }
@@ -802,16 +1019,14 @@ class ASTVariableDefinition : public ASTNode {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in variable definition", "The expression in a variable definition for the variable '" + identifier + "' has an invalid value");
             return nullptr;
         }
-        // find the type of variable
-        llvm::Type* variableType = type == "auto" ? expressionResult->value->getType() : getLLVMType(type, builder);
-        if (expressionResult->value->getType() != variableType) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in variable definition", "The type of the expression does not match the type of definition for the variable '" + identifier + "'");
-            return nullptr;
-        }
+        // find the resulting type of the definition
+        llvm::Type *resultingType = type == "auto" ? expressionResult->value->getType() : getLLVMType(type, builder);
+        // if the type is not auto, then cast from the expression type to the type
+        llvm::Value *resultingValue = type == "auto" ? expressionResult->value : createCast(expressionResult->value, resultingType, builder);
         // allocate space for the variable and store the value of the expression
-        llvm::AllocaInst *allocaInstance = createEntryBlockAlloca(builder->GetInsertBlock()->getParent(), identifier, variableType);
+        llvm::AllocaInst *allocaInstance = createEntryBlockAlloca(builder->GetInsertBlock()->getParent(), identifier, resultingType);
         setAllocaInst(identifier, allocaInstance);
-        builder->CreateStore(expressionResult->value, allocaInstance);
+        builder->CreateStore(resultingValue, allocaInstance);
         return nullptr;
     }
 };
@@ -986,7 +1201,7 @@ class ASTFunctionCall : public ASTNode {
 
         // generate the arguments
         std::vector<llvm::Value *> args;
-        for (int i = 0; i < argumentList.size(); i++) {
+        for (std::size_t i = 0; i < argumentList.size(); i++) {
             std::unique_ptr<CodegenResult> argumentResult = argumentList[i]->codegen(ctx, builder, moduleLLVM);
             // check if the value is valid
             if (argumentResult == nullptr || argumentResult->resultType != VALUE_CODEGEN_RESULT) {

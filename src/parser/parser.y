@@ -33,7 +33,7 @@ std::unique_ptr<AST> ast;
 %token<float_literal> TOK_FLOAT_LITERAL
 %token<str> TOK_IDENTIFIER TOK_TYPE TOK_STR_LITERAL TOK_F_STR_START TOK_F_STR_MIDDLE TOK_F_STR_END
 %token<character> TOK_CHAR_LITERAL
-%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS TOK_INCREMENT TOK_DECREMENT TOK_PERCENT TOK_PLUS_EQUALS TOK_HYPHEN_EQUALS
+%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS TOK_INCREMENT TOK_DECREMENT TOK_PERCENT TOK_PLUS_EQUALS TOK_HYPHEN_EQUALS TOK_PERCENT_EQUALS TOK_ASTERISK_EQUALS TOK_F_SLASH_EQUALS
 
 %type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall arithmeticExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3 variableDeclaration variableAssignment variableDefinition ifCompatibleStatement whileLoop forLoop factor2
 %type<nodeList> instanceStatementList localStatementList parameterList argumentList
@@ -102,7 +102,12 @@ variableDeclaration
     ;
 
 variableAssignment
-    : TOK_IDENTIFIER TOK_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3); delete $1;}
+    : TOK_IDENTIFIER TOK_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, ""); delete $1;}
+    | TOK_IDENTIFIER TOK_PLUS_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "+"); delete $1;}
+    | TOK_IDENTIFIER TOK_HYPHEN_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "-"); delete $1;}
+    | TOK_IDENTIFIER TOK_ASTERISK_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "*"); delete $1;}
+    | TOK_IDENTIFIER TOK_F_SLASH_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "/"); delete $1;}
+    | TOK_IDENTIFIER TOK_PERCENT_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "%"); delete $1;}
     ;
 
 variableDefinition

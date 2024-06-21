@@ -1,36 +1,7 @@
 fn main() {
-    // Test casting integer to boolean
-    a: bool = 1;
-    b: bool = 0;
-    printf("i32 to bool: 1 -> %d, 0 -> %d\n", a~i32, b~i32);
-
-    // Test casting float to boolean
-    c: bool = 234.234;
-    d: bool = 0.0;
-    printf("f64 to bool: 234.234 -> %d, 0.0 -> %d\n", c~i32, d~i32);
-
-    // Test casting boolean to integer
-    e: i32 = true;
-    f: i32 = false;
-    printf("bool to i32: true -> %d, false -> %d\n", e, f);
-
-    // Test casting boolean to float
-    g: f64 = true;
-    h: f64 = false;
-    printf("bool to f64: true -> %f, false -> %f\n", g, h);
-
-    // Test casting integer to float
-    i: f64 = 42;
-    printf("i32 to f64: 42 -> %f\n", i);
-
-    // Test casting float to integer
-    j: i32 = 42.99;
-    k: i32 = -42.99;
-    printf("f64 to i32: 42.99 -> %d, -42.99 -> %d\n", j, k);
-
-    // Additional edge cases
-    l: bool = -1; // Non-zero integer to boolean
-    m: bool = 0.0001; // Small non-zero float to boolean
-    n: bool = -0.0001; // Small negative non-zero float to boolean
-    printf("Edge cases: -1 -> %d, 0.0001 -> %d, -0.0001 -> %d\n", l~i32, m~i32, n~i32);
+    x := 10;
+    x += 5;
+    y := x--;
+    y %= x;
+    printf("%d, %d", x, y);
 }

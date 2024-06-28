@@ -291,6 +291,18 @@ class AST {
     }
 };
 
+// to keep track of all loop information when generating break and continue statements
+struct LoopContext {
+    ASTNode *updateStatement;
+    llvm::BasicBlock *conditionalBlock;
+    llvm::BasicBlock *mergeBlock;
+
+    inline bool isForLoop() const { return updateStatement != nullptr; }
+};
+
+// to keep track of information for the current loops, so that break and continue statements can be generated correctly
+static std::vector<LoopContext> loopContexts;
+
 class ASTVariableExpression : public ASTNode {
     std::string identifier;
 
@@ -417,6 +429,7 @@ class ASTTypeCast : public ASTNode {
     }
 };
 
+// this could also be called a scope
 class ASTCompoundStatement : public ASTNode {
     std::vector<ASTNode*> statementList;
 
@@ -788,7 +801,7 @@ class ASTWhileLoop : public ASTNode {
 
         // emit the "loopcond" block
         builder->SetInsertPoint(conditionalBlock);
-        // generate the condition
+        // check if the expression has an invalid value
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in while loop", "The expression in the while loop has an invalid value");
@@ -796,16 +809,19 @@ class ASTWhileLoop : public ASTNode {
         }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
+        // generate the condition
         builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
-        // emit the "loopbody" block
+        // update the loop context and emit the "loopbody" block
         builder->SetInsertPoint(loopBlock);
+        loopContexts.emplace_back(nullptr, conditionalBlock, mergeBlock);  // save loop information for potential continue and break statements
         loopBody->codegen(ctx, builder, moduleLLVM);
+        loopContexts.pop_back();  // restore the loop information for potential continue and break statements
+
         // update the loopBlock since the codegen of loopBody might change the current block
         loopBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorLoopBlock = loopBlock->getTerminator();
-        // if there is no return instruction then generate the branch instruction
-        if (terminatorLoopBlock == nullptr || !isa<llvm::ReturnInst>(terminatorLoopBlock)) builder->CreateBr(conditionalBlock);
+        // if there is no terminator instruction then generate the branch instruction
+        if (loopBlock->getTerminator() == nullptr) builder->CreateBr(conditionalBlock);
 
         // emit the "merge" block
         builder->SetInsertPoint(mergeBlock);
@@ -844,7 +860,7 @@ class ASTForLoop : public ASTNode {
         llvm::BasicBlock *loopBlock = llvm::BasicBlock::Create(*ctx, "loopbody", fn);
         llvm::BasicBlock *mergeBlock = llvm::BasicBlock::Create(*ctx, "loopcont", fn);
 
-        // start a new scope
+        // start a new scope (to contain for example any variables defined in the init statement)
         scopeStack.emplace_back();
 
         // codegen the init statement (cannot contain return or anything alike)
@@ -855,7 +871,7 @@ class ASTForLoop : public ASTNode {
 
         // emit the "loopcond" block
         builder->SetInsertPoint(conditionalBlock);
-        // generate the condition
+        // check if the expression has an invalid value
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in for loop", "The expression in the for loop has an invalid value");
@@ -863,16 +879,19 @@ class ASTForLoop : public ASTNode {
         }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
+        // generate the condition
         builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
-        // emit the "loopbody" block
+        // update the loop context and emit the "loopbody" block
         builder->SetInsertPoint(loopBlock);
+        loopContexts.emplace_back(updateStatement, conditionalBlock, mergeBlock);  // save loop information for potential continue and break statements
         loopBody->codegen(ctx, builder, moduleLLVM);
+        loopContexts.pop_back();  // restore the loop information for potential continue and break statements
+
         // update the loopBlock since the codegen of loopBody might change the current block
         loopBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorLoopBlock = loopBlock->getTerminator();
-        // if there is no return instruction then generate the update statement and the branch instruction
-        if (terminatorLoopBlock == nullptr || !isa<llvm::ReturnInst>(terminatorLoopBlock)) {
+        // if there is no terminator instruction then generate the update statement and the branch instruction
+        if (loopBlock->getTerminator() == nullptr) {
             // codegen the update statement (cannot contain return or anything alike)
             updateStatement->codegen(ctx, builder, moduleLLVM);
             builder->CreateBr(conditionalBlock);
@@ -932,6 +951,50 @@ class ASTReturnStatement : public ASTNode {
             return nullptr;
         }
 
+        return nullptr;
+    }
+};
+
+class ASTContinueStatement : public ASTNode {
+ public:
+    ASTContinueStatement() = default;  // empty because there are no fields
+    ~ASTContinueStatement() = default;  // empty because there are no fields
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Continue Statement:\n";
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        // if the continue statement is not inside a loop, then throw an error
+        if (loopContexts.empty()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid continue statement", "The continue statement is not inside of a loop");
+            return nullptr;
+        }
+        const LoopContext currentLoopContext = loopContexts.back();
+        // only generate the update statement if the loop is a for loop
+        if (currentLoopContext.isForLoop()) currentLoopContext.updateStatement->codegen(ctx, builder, moduleLLVM);
+        builder->CreateBr(currentLoopContext.conditionalBlock);
+        return nullptr;
+    }
+};
+
+class ASTBreakStatement : public ASTNode {
+ public:
+    ASTBreakStatement() = default;  // empty because there are no fields
+    ~ASTBreakStatement() = default;  // empty because there are no fields
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Break Statement:\n";
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        // if the break statement is not inside a loop, then throw an error
+        if (loopContexts.empty()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid break statement", "The break statement is not inside of a loop");
+            return nullptr;
+        }
+        const LoopContext currentLoopContext = loopContexts.back();
+        builder->CreateBr(currentLoopContext.mergeBlock);
         return nullptr;
     }
 };
@@ -1086,9 +1149,8 @@ class ASTIfStatement : public ASTNode {
         std::unique_ptr<CodegenResult> thenResult = body->codegen(ctx, builder, moduleLLVM);
         // update the thenBlock since the codegen of thenBody might change the current block
         thenBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorThenBlock = thenBlock->getTerminator();
-        // if there is no return instruction then generate the branch instruction
-        if (terminatorThenBlock == nullptr || !isa<llvm::ReturnInst>(terminatorThenBlock)) builder->CreateBr(mergeBlock);
+        // if there is no terminator instruction then generate the branch instruction
+        if (thenBlock->getTerminator() == nullptr) builder->CreateBr(mergeBlock);
 
         // emit the "merge" block
         builder->SetInsertPoint(mergeBlock);
@@ -1140,9 +1202,8 @@ class ASTIfElseStatement : public ASTNode {
         std::unique_ptr<CodegenResult> thenResult = thenBody->codegen(ctx, builder, moduleLLVM);
         // update the thenBlock since the codegen of thenBody might change the current block
         thenBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorThenBlock = thenBlock->getTerminator();
-        // if there is no return instruction then generate the mergeBlock and branch instruction
-        if (terminatorThenBlock == nullptr || !isa<llvm::ReturnInst>(terminatorThenBlock)) {
+        // if there is no terminator instruction then generate the mergeBlock and branch instruction
+        if (thenBlock->getTerminator() == nullptr) {
             mergeBlock = llvm::BasicBlock::Create(*ctx, "ifcont", fn);
             builder->CreateBr(mergeBlock);
         }
@@ -1152,9 +1213,8 @@ class ASTIfElseStatement : public ASTNode {
         std::unique_ptr<CodegenResult> elseResult = elseBody->codegen(ctx, builder, moduleLLVM);
         // update the elseBlock since the codegen of elseBody might change the current block
         elseBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorElseBlock = elseBlock->getTerminator();
-        // if there is no return instruction then generate the mergeBlock and branch instruction
-        if (terminatorElseBlock == nullptr || !isa<llvm::ReturnInst>(terminatorElseBlock)) {
+        // if there is no terminator instruction then generate the mergeBlock and branch instruction
+        if (elseBlock->getTerminator() == nullptr) {
             if (!mergeBlock) mergeBlock = llvm::BasicBlock::Create(*ctx, "ifcont", fn);
             builder->CreateBr(mergeBlock);
         }

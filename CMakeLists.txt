@@ -13,7 +13,7 @@ set(CMAKE_ARCHIVE_OUTPUT_DIRECTORY ${OUTPUT_DIRECTORY})
 
 find_package(FLEX REQUIRED)
 find_package(BISON REQUIRED)
-find_package(LLVM REQUIRED CONFIG)
+find_package(LLVM 18 REQUIRED CONFIG) # Ensure LLVM 18 is required
 
 # Generate lexer file with flex
 flex_target(Lexer src/lexer/lexer.l src/lexer/lex.yy.cpp)

@@ -61,19 +61,18 @@ jobs:
           echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf
           sudo ldconfig
           export LLVM_DIR=/usr/lib/llvm-18/cmake
+          export PATH=/usr/lib/llvm-18/bin:$PATH
         shell: bash
 
       # Step 12: Generate the build system using CMake and Ninja
       - name: Generate build system
-        run: |
-          cmake -G "Ninja" -S . -B build -DLLVM_DIR=/usr/lib/llvm-18/cmake
+        run: cmake -G "Ninja" -S . -B build -DCMAKE_PREFIX_PATH=/usr/lib/llvm-18/cmake
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
 
       # Step 13: Build the project
       - name: Build project
-        run: |
-          cmake --build build --config Release
+        run: cmake --build build --config Release
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
 

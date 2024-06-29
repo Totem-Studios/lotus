@@ -29,7 +29,7 @@ jobs:
           wget https://github.com/Kitware/CMake/releases/download/v3.26.0/cmake-3.26.0-Linux-x86_64.sh
           sudo mkdir /opt/cmake
           sudo sh cmake-3.26.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
-          sudo ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
+          sudo ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
 
       # Step 5: Install Ninja
       - name: Install Ninja
@@ -40,7 +40,6 @@ jobs:
         run: sudo apt-get install -y bison
 
       # Step 7: Install Flex
-      - name: Install Flex
         run: sudo apt-get install -y flex
 
       # Step 8: Download LLVM installation script
@@ -60,7 +59,6 @@ jobs:
         run: cmake -G "Ninja" -S . -B build
 
       # Step 12: Build the project
-      - name: Build project
         run: cmake --build build --config Release
 
       # Step 13: Verify if the executable was created successfully

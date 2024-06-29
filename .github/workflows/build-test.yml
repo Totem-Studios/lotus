@@ -53,25 +53,27 @@ jobs:
 
       # Step 10: Install LLVM 18
       - name: Install LLVM 18
-        run: sudo ./llvm.sh 18 # Install LLVM version 18
+        run: sudo ./llvm.sh 18
 
       # Step 11: Set up LLVM 18 environment
       - name: Set up LLVM 18 environment
-        run: echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf && sudo ldconfig
-        env:
-          LLVM_DIR: /usr/lib/llvm-18
+        run: |
+          echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf
+          sudo ldconfig
+          export LLVM_DIR=/usr/lib/llvm-18/cmake
+        shell: bash
 
       # Step 12: Generate the build system using CMake and Ninja
       - name: Generate build system
         run: cmake -G "Ninja" -S . -B build
         env:
-          LLVM_DIR: /usr/lib/llvm-18
+          LLVM_DIR: /usr/lib/llvm-18/cmake
 
       # Step 13: Build the project
       - name: Build project
         run: cmake --build build --config Release
         env:
-          LLVM_DIR: /usr/lib/llvm-18
+          LLVM_DIR: /usr/lib/llvm-18/cmake
 
       # Step 14: Verify if the executable was created successfully
       - name: Verify executable

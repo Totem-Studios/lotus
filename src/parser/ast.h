@@ -53,7 +53,7 @@ static llvm::Type *getLLVMType(const std::string& type, const std::unique_ptr<ll
     } else if (type == "char") {
         return builder->getInt8Ty();
     } else if (type == "str") {
-        return builder->getPtrTy();
+        return llvm::PointerType::get(builder->getInt8Ty(), 0);
     } else {
         // return a void type
         return builder->getVoidTy();

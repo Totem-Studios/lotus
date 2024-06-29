@@ -40,6 +40,7 @@ jobs:
         run: sudo apt-get install -y bison
 
       # Step 7: Install Flex
+      - name: Install Flex
         run: sudo apt-get install -y flex
 
       # Step 8: Download LLVM installation script
@@ -59,6 +60,7 @@ jobs:
         run: cmake -G "Ninja" -S . -B build
 
       # Step 12: Build the project
+      - name: Build project
         run: cmake --build build --config Release
 
       # Step 13: Verify if the executable was created successfully

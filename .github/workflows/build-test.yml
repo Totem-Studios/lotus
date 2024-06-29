@@ -65,13 +65,15 @@ jobs:
 
       # Step 12: Generate the build system using CMake and Ninja
       - name: Generate build system
-        run: cmake -G "Ninja" -S . -B build
+        run: |
+          cmake -G "Ninja" -S . -B build -DLLVM_DIR=/usr/lib/llvm-18/cmake
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
 
       # Step 13: Build the project
       - name: Build project
-        run: cmake --build build --config Release
+        run: |
+          cmake --build build --config Release
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
 

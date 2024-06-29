@@ -19,48 +19,51 @@ jobs:
       - name: Update package list
         run: sudo apt-get update
 
-      # Step 3: Install CMake
-      - name: Install CMake
+      # Step 3: Remove existing CMake
+      - name: Remove existing CMake
+        run: sudo apt-get remove -y cmake
+
+      # Step 4: Install CMake 3.26
+      - name: Install CMake 3.26
         run: |
-          sudo apt-get remove -y cmake
           wget https://github.com/Kitware/CMake/releases/download/v3.26.0/cmake-3.26.0-Linux-x86_64.sh
           sudo mkdir /opt/cmake
           sudo sh cmake-3.26.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
           sudo ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
 
-      # Step 4: Install Ninja
+      # Step 5: Install Ninja
       - name: Install Ninja
-        run: sudo apt-get install -y ninja-build=1.10.0-1
+        run: sudo apt-get install -y ninja-build
 
-      # Step 5: Install Bison
+      # Step 6: Install Bison
       - name: Install Bison
-        run: sudo apt-get install -y bison=2:3.5.1+dfsg-1
+        run: sudo apt-get install -y bison
 
-      # Step 6: Install Flex
+      # Step 7: Install Flex
       - name: Install Flex
-        run: sudo apt-get install -y flex=2.6.4-6.2
+        run: sudo apt-get install -y flex
 
-      # Step 7: Download LLVM installation script
+      # Step 8: Download LLVM installation script
       - name: Download LLVM installation script
         run: wget https://apt.llvm.org/llvm.sh
 
-      # Step 8: Make LLVM script executable
+      # Step 9: Make LLVM script executable
       - name: Make LLVM script executable
         run: chmod +x llvm.sh
 
-      # Step 9: Install LLVM
+      # Step 10: Install LLVM
       - name: Install LLVM
         run: sudo ./llvm.sh 18
 
-      # Step 10: Generate the build system using CMake and Ninja
+      # Step 11: Generate the build system using CMake and Ninja
       - name: Generate build system
         run: cmake -G "Ninja" -S . -B build
 
-      # Step 11: Build the project
+      # Step 12: Build the project
       - name: Build project
         run: cmake --build build --config Release
 
-      # Step 12: Verify if the executable was created successfully
+      # Step 13: Verify if the executable was created successfully
       - name: Verify executable
         run: |
           if [ -f "./bin/lotus" ]; then
@@ -68,4 +71,3 @@ jobs:
           else
             echo "Executable not found."
             exit 1
-          fi

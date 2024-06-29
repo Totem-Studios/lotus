@@ -22,12 +22,12 @@ All work on this project happens directly on GitHub. Both core team members and 
 Before submitting a bug report, ensure that you do the following:
 
 1. Check the [FAQs](FAQ.md) for a list of common questions and problems.
-2. Make sure you are using the latest version.
+2. Make sure you are using the latest Lotus version.
 3. Check the existing [issues](https://github.com/Totem-Studios/Lotus/issues) to make sure you are not duplicating someone's work.
 
 ### Suggesting Enhancements
 
-If you have an idea for an enhancement, create an issue using the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) or email us at **\*\***pontus@henriksson.space**_@gmail.com_**.
+If you have an idea for an enhancement, create an issue using the [feature request template](.github/ISSUE_TEMPLATE/feature_request.md) or email us at **pontus@henriksson.space**.
 
 ### Your First Code Contribution
 
@@ -43,7 +43,7 @@ Unsure where to begin contributing? Look for issues tagged `good-first-issue`.
 ### Code Style
 
 - 2 spaces for indentation rather than tabs.
-- You can try running `cpplint <filename>` for c++ files or `lotuslint <filename>` for lotus files for style unification
+- You can try running `cpplint <filename>` for c++ files or `lotuslint <filename>` for lotus files for style unification.
 
 ## Additional Notes
 

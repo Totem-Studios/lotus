@@ -13,7 +13,7 @@ jobs:
     steps:
       # Step 1: Checkout the code from the repository
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
       # Step 2: Update package list
       - name: Update package list
@@ -51,9 +51,9 @@ jobs:
       - name: Make LLVM script executable
         run: chmod +x llvm.sh
 
-      # Step 10: Install LLVM
-      - name: Install LLVM
-        run: sudo ./llvm.sh 18
+      # Step 10: Install LLVM 15
+      - name: Install LLVM 15
+        run: sudo ./llvm.sh 15 # Install LLVM version 15
 
       # Step 11: Generate the build system using CMake and Ninja
       - name: Generate build system

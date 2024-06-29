@@ -21,7 +21,12 @@ jobs:
 
       # Step 3: Install CMake
       - name: Install CMake
-        run: sudo apt-get install -y cmake=3.18.4-0ubuntu1
+        run: |
+          sudo apt-get remove -y cmake
+          wget https://github.com/Kitware/CMake/releases/download/v3.26.0/cmake-3.26.0-Linux-x86_64.sh
+          sudo mkdir /opt/cmake
+          sudo sh cmake-3.26.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
+          sudo ln -s /opt/cmake/bin/cmake /usr/local/bin/cmake
 
       # Step 4: Install Ninja
       - name: Install Ninja

@@ -80,9 +80,11 @@ jobs:
 
       # Step 12: Generate the build system using CMake and Ninja
       - name: Generate build system
-        run: cmake -G "Ninja" -S . -B build -DLLVM_DIR=/usr/lib/llvm-18/cmake -DCMAKE_PREFIX_PATH=/usr/lib/llvm-18/cmake
+        run: cmake -G "Ninja" -S . -B build -DLLVM_DIR=/usr/lib/llvm-18/cmake -DCMAKE_PREFIX_PATH=/usr/lib/llvm-18/cmake -DCMAKE_MODULE_PATH=/usr/lib/llvm-18/cmake
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
+          CMAKE_PREFIX_PATH: /usr/lib/llvm-18/cmake
+          CMAKE_MODULE_PATH: /usr/lib/llvm-18/cmake
 
       # Step 13: Build the project
       - name: Build project

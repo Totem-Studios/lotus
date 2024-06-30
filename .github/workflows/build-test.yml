@@ -11,19 +11,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the code from the repository
       - name: Checkout code
         uses: actions/checkout@v2
 
-      # Step 2: Update package list
       - name: Update package list
         run: sudo apt-get update
 
-      # Step 3: Remove existing CMake
+      - name: Install wget
+        run: sudo apt-get install -y wget
+
       - name: Remove existing CMake
         run: sudo apt-get remove -y cmake
 
-      # Step 4: Install CMake 3.26
       - name: Install CMake 3.26
         run: |
           wget https://github.com/Kitware/CMake/releases/download/v3.26.0/cmake-3.26.0-Linux-x86_64.sh
@@ -31,11 +30,9 @@ jobs:
           sudo sh cmake-3.26.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
           sudo ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
 
-      # Step 5: Install Ninja build system
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build
 
-      # Step 6: Install Flex 2.6.4 from source
       - name: Install Flex 2.6.4
         run: |
           wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
@@ -46,7 +43,6 @@ jobs:
           sudo make install
           sudo ln -sf /usr/local/bin/flex /usr/bin/flex
 
-      # Step 7: Install Bison 3.8.2 from source
       - name: Install Bison 3.8.2
         run: |
           wget http://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz
@@ -57,7 +53,6 @@ jobs:
           sudo make install
           sudo ln -sf /usr/local/bin/bison /usr/bin/bison
 
-      # Step 8: Download and install LLVM 18
       - name: Install LLVM 18
         run: |
           wget https://apt.llvm.org/llvm.sh
@@ -69,11 +64,8 @@ jobs:
           LLVM_DIR: /usr/lib/llvm-18/cmake
           PATH: /usr/lib/llvm-18/bin:$PATH
 
-      # Step 9: Set environment variables for CMake
       - name: Set up LLVM 18 environment
         run: |
-          echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf
-          sudo ldconfig
           export LLVM_DIR=/usr/lib/llvm-18/cmake
           export CMAKE_PREFIX_PATH=/usr/lib/llvm-18/cmake
           export CMAKE_MODULE_PATH=/usr/lib/llvm-18/cmake
@@ -83,7 +75,6 @@ jobs:
           echo "CMAKE_MODULE_PATH: $CMAKE_MODULE_PATH"
         shell: bash
 
-      # Step 10: Generate the build system using CMake and Ninja
       - name: Generate build system
         run: cmake -G "Ninja" -S . -B build -DLLVM_DIR=$LLVM_DIR -DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH -DCMAKE_MODULE_PATH=$CMAKE_MODULE_PATH
         env:
@@ -91,13 +82,11 @@ jobs:
           CMAKE_PREFIX_PATH: /usr/lib/llvm-18/cmake
           CMAKE_MODULE_PATH: /usr/lib/llvm-18/cmake
 
-      # Step 11: Build the project
       - name: Build project
         run: cmake --build build --config Release
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
 
-      # Step 12: Verify if the executable was created successfully
       - name: Verify executable
         run: |
           if [ -f "./bin/lotus" ]; then

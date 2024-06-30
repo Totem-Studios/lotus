@@ -61,9 +61,6 @@ jobs:
           sudo ./llvm.sh 18
           echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf
           sudo ldconfig
-        env:
-          LLVM_DIR: /usr/lib/llvm-18/cmake
-          PATH: /usr/lib/llvm-18/bin:$PATH
 
       - name: Set up LLVM 18 environment
         run: |

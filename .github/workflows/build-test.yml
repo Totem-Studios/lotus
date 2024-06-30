@@ -11,51 +11,88 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Step 1: Checkout the code from the repository
       - name: Checkout code
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      # Step 2: Update package list
       - name: Update package list
         run: sudo apt-get update
 
-      # Step 3: Install CMake
-      - name: Install CMake
-        run: sudo apt-get install -y cmake=3.18.4-0ubuntu1
+      - name: Install wget
+        run: sudo apt-get install -y wget
 
-      # Step 4: Install Ninja
+      - name: Remove existing CMake
+        run: sudo apt-get remove -y cmake
+
+      - name: Install CMake 3.26
+        run: |
+          wget https://github.com/Kitware/CMake/releases/download/v3.26.0/cmake-3.26.0-Linux-x86_64.sh
+          sudo mkdir /opt/cmake
+          sudo sh cmake-3.26.0-Linux-x86_64.sh --prefix=/opt/cmake --skip-license
+          sudo ln -sf /opt/cmake/bin/cmake /usr/local/bin/cmake
+
       - name: Install Ninja
-        run: sudo apt-get install -y ninja-build=1.10.0-1
+        run: sudo apt-get install -y ninja-build
 
-      # Step 5: Install Bison
-      - name: Install Bison
-        run: sudo apt-get install -y bison=2:3.5.1+dfsg-1
+      - name: Install Flex 2.6.4
+        run: |
+          wget https://github.com/westes/flex/releases/download/v2.6.4/flex-2.6.4.tar.gz
+          tar -xzf flex-2.6.4.tar.gz
+          cd flex-2.6.4
+          ./configure
+          make
+          sudo make install
+          sudo ln -sf /usr/local/bin/flex /usr/bin/flex
 
-      # Step 6: Install Flex
-      - name: Install Flex
-        run: sudo apt-get install -y flex=2.6.4-6.2
+      - name: Install Bison 3.8.2
+        run: |
+          wget http://ftp.gnu.org/gnu/bison/bison-3.8.2.tar.gz
+          tar -xzf bison-3.8.2.tar.gz
+          cd bison-3.8.2
+          ./configure
+          make
+          sudo make install
+          sudo ln -sf /usr/local/bin/bison /usr/bin/bison
 
-      # Step 7: Download LLVM installation script
-      - name: Download LLVM installation script
-        run: wget https://apt.llvm.org/llvm.sh
+      - name: Install LLVM 18
+        run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
+          echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf
+          sudo ldconfig
+        env:
+          LLVM_DIR: /usr/lib/llvm-18/cmake
+          PATH: /usr/lib/llvm-18/bin:$PATH
 
-      # Step 8: Make LLVM script executable
-      - name: Make LLVM script executable
-        run: chmod +x llvm.sh
+      - name: Set up LLVM 18 environment
+        run: |
+          export LLVM_DIR=/usr/lib/llvm-18/cmake
+          export CMAKE_PREFIX_PATH=/usr/lib/llvm-18/cmake
+          export CMAKE_MODULE_PATH=/usr/lib/llvm-18/cmake
+          export PATH=/usr/lib/llvm-18/bin:$PATH
+          echo "LLVM_DIR: $LLVM_DIR"
+          echo "CMAKE_PREFIX_PATH: $CMAKE_PREFIX_PATH"
+          echo "CMAKE_MODULE_PATH: $CMAKE_MODULE_PATH"
+        shell: bash
 
-      # Step 9: Install LLVM
-      - name: Install LLVM
-        run: sudo ./llvm.sh 18
-
-      # Step 10: Generate the build system using CMake and Ninja
       - name: Generate build system
-        run: cmake -G "Ninja" -S . -B build
+        run: |
+          echo "Generating build system..."
+          cmake -G "Ninja" -S . -B build -DLLVM_DIR=$LLVM_DIR -DCMAKE_PREFIX_PATH=$CMAKE_PREFIX_PATH -DCMAKE_MODULE_PATH=$CMAKE_MODULE_PATH
+          echo "Build system generated."
+        env:
+          LLVM_DIR: /usr/lib/llvm-18/cmake
+          CMAKE_PREFIX_PATH: /usr/lib/llvm-18/cmake
+          CMAKE_MODULE_PATH: /usr/lib/llvm-18/cmake
 
-      # Step 11: Build the project
       - name: Build project
-        run: cmake --build build --config Release
+        run: |
+          echo "Building project..."
+          cmake --build build --config Release
+          echo "Project built."
+        env:
+          LLVM_DIR: /usr/lib/llvm-18/cmake
 
-      # Step 12: Verify if the executable was created successfully
       - name: Verify executable
         run: |
           if [ -f "./bin/lotus" ]; then
@@ -63,4 +100,3 @@ jobs:
           else
             echo "Executable not found."
             exit 1
-          fi

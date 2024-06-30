@@ -35,13 +35,13 @@ jobs:
       - name: Install Ninja
         run: sudo apt-get install -y ninja-build
 
-      # Step 6: Install Bison
+      # Step 6: Install Bison 3.8.2
       - name: Install Bison
-        run: sudo apt-get install -y bison
+        run: sudo apt-get install -y bison=2:3.8.2
 
-      # Step 7: Install Flex
+      # Step 7: Install Flex 2.6.4
       - name: Install Flex
-        run: sudo apt-get install -y flex
+        run: sudo apt-get install -y flex=2.6.4
 
       # Step 8: Download LLVM installation script
       - name: Download LLVM installation script

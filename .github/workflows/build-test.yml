@@ -44,6 +44,7 @@ jobs:
           ./configure
           make
           sudo make install
+          sudo ln -sf /usr/local/bin/flex /usr/bin/flex
 
       # Step 7: Install Bison 3.8.2 from source
       - name: Install Bison 3.8.2
@@ -54,6 +55,7 @@ jobs:
           ./configure
           make
           sudo make install
+          sudo ln -sf /usr/local/bin/bison /usr/bin/bison
 
       # Step 8: Download LLVM installation script
       - name: Download LLVM installation script

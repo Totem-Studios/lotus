@@ -13,7 +13,7 @@ jobs:
     steps:
       # Step 1: Checkout the code from the repository
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
 
       # Step 2: Update package list
       - name: Update package list
@@ -57,27 +57,19 @@ jobs:
           sudo make install
           sudo ln -sf /usr/local/bin/bison /usr/bin/bison
 
-      # Step 8: Download LLVM installation script
-      - name: Download LLVM installation script
-        run: wget https://apt.llvm.org/llvm.sh
-
-      # Step 9: Make LLVM script executable
-        run: chmod +x llvm.sh
-
-      # Step 10: Install LLVM 18
+      # Step 8: Download and install LLVM 18
       - name: Install LLVM 18
-        run: sudo ./llvm.sh 18
-
-      # Step 11: Set up LLVM 18 environment
-      - name: Set up LLVM 18 environment
         run: |
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 18
           echo "/usr/lib/llvm-18/lib" | sudo tee /etc/ld.so.conf.d/llvm-18.conf
           sudo ldconfig
-          export LLVM_DIR=/usr/lib/llvm-18/cmake
-          export PATH=/usr/lib/llvm-18/bin:$PATH
-        shell: bash
+        env:
+          LLVM_DIR: /usr/lib/llvm-18/cmake
+          PATH: /usr/lib/llvm-18/bin:$PATH
 
-      # Step 12: Generate the build system using CMake and Ninja
+      # Step 9: Generate the build system using CMake and Ninja
       - name: Generate build system
         run: cmake -G "Ninja" -S . -B build -DLLVM_DIR=/usr/lib/llvm-18/cmake -DCMAKE_PREFIX_PATH=/usr/lib/llvm-18/cmake -DCMAKE_MODULE_PATH=/usr/lib/llvm-18/cmake
         env:
@@ -85,13 +77,13 @@ jobs:
           CMAKE_PREFIX_PATH: /usr/lib/llvm-18/cmake
           CMAKE_MODULE_PATH: /usr/lib/llvm-18/cmake
 
-      # Step 13: Build the project
+      # Step 10: Build the project
       - name: Build project
         run: cmake --build build --config Release
         env:
           LLVM_DIR: /usr/lib/llvm-18/cmake
 
-      # Step 14: Verify if the executable was created successfully
+      # Step 11: Verify if the executable was created successfully
       - name: Verify executable
         run: |
           if [ -f "./bin/lotus" ]; then

@@ -46,6 +46,8 @@ or or|[|][|]
 "while" {return TOK_WHILE;}
 "for" {return TOK_FOR;}
 "fn" {return TOK_FN;}
+"continue" {return TOK_CONTINUE;}
+"break" {return TOK_BREAK;}
 "true" {return TOK_TRUE;}
 "false" {return TOK_FALSE;}
 {not} {return TOK_NOT;}
@@ -65,6 +67,9 @@ or or|[|][|]
 "--" {return TOK_DECREMENT;}
 "+=" {return TOK_PLUS_EQUALS;}
 "-=" {return TOK_HYPHEN_EQUALS;}
+"*=" {return TOK_ASTERISK_EQUALS;}
+"/=" {return TOK_F_SLASH_EQUALS;}
+"%=" {return TOK_PERCENT_EQUALS;}
 "+" {return TOK_PLUS;}
 "-" {return TOK_HYPHEN;}
 "*" {return TOK_ASTERISK;}

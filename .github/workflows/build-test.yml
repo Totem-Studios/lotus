@@ -2,9 +2,11 @@ name: C/C++ CI for Lotus Compiler
 
 on:
   push:
-    branches: [main, dev]
+    # branches: [main, dev]
+    branches: [llvm-workflow-fix]
   pull_request:
-    branches: [main, dev]
+    # branches: [main, dev]
+    branches: [llvm-workflow-fix]
 
 jobs:
   build:

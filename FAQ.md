@@ -42,4 +42,4 @@ If you've found a bug, please open an issue using the [bug report template](.git
 
 ### I have a question that's not answered here, what should I do?
 
-If your question is not answered here, feel free to open an issue with the label `question` or reach out to us through email at ***pontus@henriksson.space***.
+If your question is not answered here, feel free to open an issue with the label `question` or reach out to us through email at **pontus@henriksson.space**.

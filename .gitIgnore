@@ -24,8 +24,9 @@ Thumbs.db
 *.dylib
 *.dll
 *.exe
-# but don't ignore the lotus.exe in the bin directory
-!./bin/lotus.exe
+# Ensure that the generated executables are not committed to the repository by users, preventing potential issues with outdated binaries.
+./bin/lotus.exe
+./bin/lotus
 
 # Ignore temporary files
 *.tmp

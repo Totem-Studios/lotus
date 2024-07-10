@@ -1,19 +1,44 @@
-fn sum(x: i32, y: i32) -> i32 {
-    ret x + y;
-}
-
-fn main() -> i32 {
-    if 2 > 3 {
-        printf("9");
-    } else if 7 - 2 == 5 && 4 >= 2 {
-        if not 2 + 1 - 3: printf("0");
-        printf("5");
-    } else if 3 - 2 {
-        printf("6");
-    } else {
-        printf("8");
+fn main() {
+    i: i32 = 0;
+    while i < 5 {
+        for j := 0; j < 5; j++ {
+            if j == 3 {
+                printf("continue, i: %d, j: %d\n", i, j);
+                continue;  // Skip the rest of the inner loop when j is 3
+            }
+            if i == 2 && j == 4 {
+                printf("break, i: %d, j: %d\n", i, j);
+                break;  // Break the inner loop when i is 2 and j is 4
+            }
+            printf("i: %d, j: %d\n", i, j);
+        }
+        i += 1;
     }
-    ret sum(7, -2);
+
+    // Output:
+    // i: 0, j: 0
+    // i: 0, j: 1
+    // i: 0, j: 2
+    // continue, i: 0, j: 3
+    // i: 0, j: 4
+    // i: 1, j: 0
+    // i: 1, j: 1
+    // i: 1, j: 2
+    // continue, i: 1, j: 3
+    // i: 1, j: 4
+    // i: 2, j: 0
+    // i: 2, j: 1
+    // i: 2, j: 2
+    // continue, i: 2, j: 3
+    // break, i: 2, j: 4
+    // i: 3, j: 0
+    // i: 3, j: 1
+    // i: 3, j: 2
+    // continue, i: 3, j: 3
+    // i: 3, j: 4
+    // i: 4, j: 0
+    // i: 4, j: 1
+    // i: 4, j: 2
+    // continue, i: 4, j: 3
+    // i: 4, j: 4
 }
-// output: 05
-// returns: 5;

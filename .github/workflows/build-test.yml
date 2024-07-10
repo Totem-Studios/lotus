@@ -1,7 +1,5 @@
 name: C/C++ CI for Lotus Compiler
 
-# test change here!
-
 on:
   push:
     branches: [main, dev]
@@ -16,15 +14,15 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v3
 
-      - name: Install CMake and Ninja TEST
+      - name: Install CMake and Ninja
         run: |
           sudo apt-get update
           sudo apt-get install -y cmake ninja-build
 
-      - name: Generate build system TEST
+      - name: Generate build system
         run: cmake -G "Ninja" -S . -B build
 
-      - name: Build project TEST
+      - name: Build project
         run: cmake --build build --config Release
 
       - name: Verify executable

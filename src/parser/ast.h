@@ -53,7 +53,7 @@ static llvm::Type *getLLVMType(const std::string& type, const std::unique_ptr<ll
     } else if (type == "char") {
         return builder->getInt8Ty();
     } else if (type == "str") {
-        return builder->getPtrTy();
+        return llvm::PointerType::get(builder->getInt8Ty(), 0);
     } else {
         // return a void type
         return builder->getVoidTy();
@@ -129,6 +129,102 @@ static llvm::AllocaInst *createEntryBlockAlloca(llvm::Function *fn, const std::s
     return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
 }
 
+// helper function to create multiplication
+static llvm::Value *createBinaryOperation(llvm::Value *leftValue, llvm::Value *rightValue, const std::string& operation, const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+    bool isFloatingPointOperation = leftValue->getType()->isFloatingPointTy();
+    // if it is an integer that is not an i1 (boolean)
+    bool isIntegerOperation = leftValue->getType()->isIntegerTy() && !leftValue->getType()->isIntegerTy(1);
+
+    // these can be performed with different types because both sides are cast to booleans
+    if (operation == "&&") {
+        return builder->CreateAnd(getBooleanValue(leftValue, builder), getBooleanValue(rightValue, builder), "andtmp");
+    } else if (operation == "||") {
+        return builder->CreateOr(getBooleanValue(leftValue, builder), getBooleanValue(rightValue, builder), "ortmp");
+    }
+
+    // check if the left and right expression have the same type
+    if (leftValue->getType() != rightValue->getType()) {
+        generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in binary operation", "The left and right hand sides of the binary operator '" + operation + "' have different types");
+        return nullptr;
+    }
+
+    // these operations can only be performed if the types are the same
+    if (operation == "+") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFAdd(leftValue, rightValue, "addfloattmp");
+        } else if (isIntegerOperation) {
+            return builder->CreateAdd(leftValue, rightValue, "addtmp");
+        }
+    } else if (operation == "-") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFSub(leftValue, rightValue, "subfloattmp");
+        } else if (isIntegerOperation) {
+            return builder->CreateSub(leftValue, rightValue, "subtmp");
+        }
+    } else if (operation == "*") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFMul(leftValue, rightValue, "mulfloattmp");
+        } else if (isIntegerOperation) {
+            return builder->CreateMul(leftValue, rightValue, "multmp");
+        }
+    } else if (operation == "/") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFDiv(leftValue, rightValue, "divfloattmp");
+        } else if (isIntegerOperation) {
+            return builder->CreateSDiv(leftValue, rightValue, "divtmp");
+        }
+    } else if (operation == "%") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFRem(leftValue, rightValue, "remfloattmp");
+        } else if (isIntegerOperation) {
+            return builder->CreateSRem(leftValue, rightValue, "remtmp");
+        }
+    } else if (operation == "==") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFCmpOEQ(leftValue, rightValue, "cmpfloattmpequals");
+        } else if (isIntegerOperation) {
+            return builder->CreateICmpEQ(leftValue, rightValue, "cmptmpequals");
+        }
+    } else if (operation == "!=") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFCmpONE(leftValue, rightValue, "cmpfloattmpnotequals");
+        } else if (isIntegerOperation) {
+            return builder->CreateICmpNE(leftValue, rightValue, "cmptmpnotequals");
+        }
+    } else if (operation == "<") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFCmpOLT(leftValue, rightValue, "cmpfloattmpless");
+        } else if (isIntegerOperation) {
+            return builder->CreateICmpSLT(leftValue, rightValue, "cmptmpless");
+        }
+    } else if (operation == ">") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFCmpOGT(leftValue, rightValue, "cmpfloattmpgreater");
+        } else if (isIntegerOperation) {
+            return builder->CreateICmpSGT(leftValue, rightValue, "cmptmpgreater");
+        }
+    } else if (operation == "<=") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFCmpOLE(leftValue, rightValue, "cmpfloattmplessequals");
+        } else if (isIntegerOperation) {
+            return builder->CreateICmpSLE(leftValue, rightValue, "cmptmplessequals");
+        }
+    } else if (operation == ">=") {
+        if (isFloatingPointOperation) {
+            return builder->CreateFCmpOGE(leftValue, rightValue, "cmpfloattmpgreaterequals");
+        } else if (isIntegerOperation) {
+            return builder->CreateICmpSGE(leftValue, rightValue, "cmptmpgreaterequals");
+        }
+    }
+
+    // if no operators matched, then throw an error
+    std::string stringType;
+    llvm::raw_string_ostream stream(stringType);
+    leftValue->getType()->print(stream);
+    generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid binary operator", "The binary operator '" + operation + "' is not supported with the type '" + stringType + "'");
+    return nullptr;
+}
+
 enum CodegenResultType {
     VALUE_CODEGEN_RESULT,
     PARAM_CODEGEN_RESULT,
@@ -195,6 +291,18 @@ class AST {
     }
 };
 
+// to keep track of all loop information when generating break and continue statements
+struct LoopContext {
+    ASTNode *updateStatement;
+    llvm::BasicBlock *conditionalBlock;
+    llvm::BasicBlock *mergeBlock;
+
+    inline bool isForLoop() const { return updateStatement != nullptr; }
+};
+
+// to keep track of information for the current loops, so that break and continue statements can be generated correctly
+static std::vector<LoopContext> loopContexts;
+
 class ASTVariableExpression : public ASTNode {
     std::string identifier;
 
@@ -207,12 +315,12 @@ class ASTVariableExpression : public ASTNode {
     }
 
     std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
-        llvm::AllocaInst *allocaInstance = getAllocaInst(identifier);
-        if (allocaInstance == nullptr) {
+        llvm::AllocaInst *allocaInst = getAllocaInst(identifier);
+        if (allocaInst == nullptr) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Unknown variable name", "The variable '" + identifier + "' could not be found");
             return nullptr;
         }
-        return std::make_unique<CodegenResult>(builder->CreateLoad(allocaInstance->getAllocatedType(), allocaInstance, identifier.c_str()), VALUE_CODEGEN_RESULT);
+        return std::make_unique<CodegenResult>(builder->CreateLoad(allocaInst->getAllocatedType(), allocaInst, identifier.c_str()), VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -321,6 +429,7 @@ class ASTTypeCast : public ASTNode {
     }
 };
 
+// this could also be called a scope
 class ASTCompoundStatement : public ASTNode {
     std::vector<ASTNode*> statementList;
 
@@ -390,95 +499,7 @@ class ASTBinaryOperator : public ASTNode {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid right hand side of binary operator", "The right hand side of the binary operator '" + operation + "' has an invalid value");
             return nullptr;
         }
-        // check if the left and right expression have the same type
-        if (leftResult->value->getType() != rightResult->value->getType()) {
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in binary operation", "The left and right hand sides of the binary operator '" + operation + "' have different types");
-            return nullptr;
-        }
-        bool isFloatingPointOperation = leftResult->value->getType()->isFloatingPointTy();
-        // if it is an integer that is not an i1 (boolean)
-        bool isIntegerOperation = leftResult->value->getType()->isIntegerTy() && !leftResult->value->getType()->isIntegerTy(1);
-        llvm::Value *resultValue = nullptr;
-        if (operation == "+") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFAdd(leftResult->value, rightResult->value, "addfloattmp");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateAdd(leftResult->value, rightResult->value, "addtmp");
-            }
-        } else if (operation == "-") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFSub(leftResult->value, rightResult->value, "subfloattmp");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateSub(leftResult->value, rightResult->value, "subtmp");
-            }
-        } else if (operation == "*") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFMul(leftResult->value, rightResult->value, "mulfloattmp");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateMul(leftResult->value, rightResult->value, "multmp");
-            }
-        } else if (operation == "/") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFDiv(leftResult->value, rightResult->value, "divfloattmp");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateSDiv(leftResult->value, rightResult->value, "divtmp");
-            }
-        } else if (operation == "%") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFRem(leftResult->value, rightResult->value, "remfloattmp");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateSRem(leftResult->value, rightResult->value, "remtmp");
-            }
-        } else if (operation == "==") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFCmpOEQ(leftResult->value, rightResult->value, "cmpfloattmpequals");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateICmpEQ(leftResult->value, rightResult->value, "cmptmpequals");
-            }
-        } else if (operation == "!=") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFCmpONE(leftResult->value, rightResult->value, "cmpfloattmpnotequals");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateICmpNE(leftResult->value, rightResult->value, "cmptmpnotequals");
-            }
-        } else if (operation == "<") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFCmpOLT(leftResult->value, rightResult->value, "cmpfloattmpless");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateICmpSLT(leftResult->value, rightResult->value, "cmptmpless");
-            }
-        } else if (operation == ">") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFCmpOGT(leftResult->value, rightResult->value, "cmpfloattmpgreater");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateICmpSGT(leftResult->value, rightResult->value, "cmptmpgreater");
-            }
-        } else if (operation == "<=") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFCmpOLE(leftResult->value, rightResult->value, "cmpfloattmplessequals");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateICmpSLE(leftResult->value, rightResult->value, "cmptmplessequals");
-            }
-        } else if (operation == ">=") {
-            if (isFloatingPointOperation) {
-                resultValue = builder->CreateFCmpOGE(leftResult->value, rightResult->value, "cmpfloattmpgreaterequals");
-            } else if (isIntegerOperation) {
-                resultValue = builder->CreateICmpSGE(leftResult->value, rightResult->value, "cmptmpgreaterequals");
-            }
-        } else if (operation == "&&") {
-            resultValue = builder->CreateAnd(getBooleanValue(leftResult->value, builder), getBooleanValue(rightResult->value, builder), "andtmp");
-        } else if (operation == "||") {
-            resultValue = builder->CreateOr(getBooleanValue(leftResult->value, builder), getBooleanValue(rightResult->value, builder), "ortmp");
-        }
-        // check if the resultValue is a nullptr, then throw an error
-        if (!resultValue) {
-            std::string stringType;
-            llvm::raw_string_ostream stream(stringType);
-            leftResult->value->getType()->print(stream);
-            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid binary operator", "The binary operator '" + operation + "' is not supported with the type '" + stringType + "'");
-            return nullptr;
-        }
-        return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
+        return std::make_unique<CodegenResult>(createBinaryOperation(leftResult->value, rightResult->value, operation, builder), VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -780,7 +801,7 @@ class ASTWhileLoop : public ASTNode {
 
         // emit the "loopcond" block
         builder->SetInsertPoint(conditionalBlock);
-        // generate the condition
+        // check if the expression has an invalid value
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in while loop", "The expression in the while loop has an invalid value");
@@ -788,16 +809,19 @@ class ASTWhileLoop : public ASTNode {
         }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
+        // generate the condition
         builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
-        // emit the "loopbody" block
+        // update the loop context and emit the "loopbody" block
         builder->SetInsertPoint(loopBlock);
+        loopContexts.emplace_back(nullptr, conditionalBlock, mergeBlock);  // save loop information for potential continue and break statements
         loopBody->codegen(ctx, builder, moduleLLVM);
+        loopContexts.pop_back();  // restore the loop information for potential continue and break statements
+
         // update the loopBlock since the codegen of loopBody might change the current block
         loopBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorLoopBlock = loopBlock->getTerminator();
-        // if there is no return instruction then generate the branch instruction
-        if (terminatorLoopBlock == nullptr || !isa<llvm::ReturnInst>(terminatorLoopBlock)) builder->CreateBr(conditionalBlock);
+        // if there is no terminator instruction then generate the branch instruction
+        if (loopBlock->getTerminator() == nullptr) builder->CreateBr(conditionalBlock);
 
         // emit the "merge" block
         builder->SetInsertPoint(mergeBlock);
@@ -836,7 +860,7 @@ class ASTForLoop : public ASTNode {
         llvm::BasicBlock *loopBlock = llvm::BasicBlock::Create(*ctx, "loopbody", fn);
         llvm::BasicBlock *mergeBlock = llvm::BasicBlock::Create(*ctx, "loopcont", fn);
 
-        // start a new scope
+        // start a new scope (to contain for example any variables defined in the init statement)
         scopeStack.emplace_back();
 
         // codegen the init statement (cannot contain return or anything alike)
@@ -847,7 +871,7 @@ class ASTForLoop : public ASTNode {
 
         // emit the "loopcond" block
         builder->SetInsertPoint(conditionalBlock);
-        // generate the condition
+        // check if the expression has an invalid value
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in for loop", "The expression in the for loop has an invalid value");
@@ -855,16 +879,19 @@ class ASTForLoop : public ASTNode {
         }
         // get the boolean value of the expression
         llvm::Value *condition = getBooleanValue(expressionResult->value, builder);
+        // generate the condition
         builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
-        // emit the "loopbody" block
+        // update the loop context and emit the "loopbody" block
         builder->SetInsertPoint(loopBlock);
+        loopContexts.emplace_back(updateStatement, conditionalBlock, mergeBlock);  // save loop information for potential continue and break statements
         loopBody->codegen(ctx, builder, moduleLLVM);
+        loopContexts.pop_back();  // restore the loop information for potential continue and break statements
+
         // update the loopBlock since the codegen of loopBody might change the current block
         loopBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorLoopBlock = loopBlock->getTerminator();
-        // if there is no return instruction then generate the update statement and the branch instruction
-        if (terminatorLoopBlock == nullptr || !isa<llvm::ReturnInst>(terminatorLoopBlock)) {
+        // if there is no terminator instruction then generate the update statement and the branch instruction
+        if (loopBlock->getTerminator() == nullptr) {
             // codegen the update statement (cannot contain return or anything alike)
             updateStatement->codegen(ctx, builder, moduleLLVM);
             builder->CreateBr(conditionalBlock);
@@ -928,6 +955,50 @@ class ASTReturnStatement : public ASTNode {
     }
 };
 
+class ASTContinueStatement : public ASTNode {
+ public:
+    ASTContinueStatement() = default;  // empty because there are no fields
+    ~ASTContinueStatement() = default;  // empty because there are no fields
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Continue Statement:\n";
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        // if the continue statement is not inside a loop, then throw an error
+        if (loopContexts.empty()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid continue statement", "The continue statement is not inside of a loop");
+            return nullptr;
+        }
+        const LoopContext currentLoopContext = loopContexts.back();
+        // only generate the update statement if the loop is a for loop
+        if (currentLoopContext.isForLoop()) currentLoopContext.updateStatement->codegen(ctx, builder, moduleLLVM);
+        builder->CreateBr(currentLoopContext.conditionalBlock);
+        return nullptr;
+    }
+};
+
+class ASTBreakStatement : public ASTNode {
+ public:
+    ASTBreakStatement() = default;  // empty because there are no fields
+    ~ASTBreakStatement() = default;  // empty because there are no fields
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Break Statement:\n";
+    }
+
+    std::unique_ptr<CodegenResult> codegen(const std::unique_ptr<llvm::LLVMContext>& ctx, const std::unique_ptr<llvm::IRBuilder<>>& builder, const std::unique_ptr<llvm::Module>& moduleLLVM) const override {
+        // if the break statement is not inside a loop, then throw an error
+        if (loopContexts.empty()) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid break statement", "The break statement is not inside of a loop");
+            return nullptr;
+        }
+        const LoopContext currentLoopContext = loopContexts.back();
+        builder->CreateBr(currentLoopContext.mergeBlock);
+        return nullptr;
+    }
+};
+
 class ASTVariableDeclaration : public ASTNode {
     std::string identifier;
     std::string type;
@@ -957,9 +1028,10 @@ class ASTVariableDeclaration : public ASTNode {
 class ASTVariableAssignment : public ASTNode {
     std::string identifier;
     ASTNode *expression;
+    std::string operation;
 
  public:
-    ASTVariableAssignment(std::string identifier, ASTNode *expression): identifier(identifier), expression(expression) {}
+    ASTVariableAssignment(std::string identifier, ASTNode *expression, std::string operation): identifier(identifier), expression(expression), operation(operation) {}
     ~ASTVariableAssignment() {
         delete expression;
     }
@@ -967,6 +1039,7 @@ class ASTVariableAssignment : public ASTNode {
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Variable Assignment:\n";
         std::cout << std::string((depth + 1) * 2, ' ') << "Identifier: " << identifier << "\n";
+        if (!operation.empty()) std::cout << std::string((depth + 1) * 2, ' ') << "Operation: " << operation << "\n";
         expression->print(depth + 1);
     }
 
@@ -976,6 +1049,7 @@ class ASTVariableAssignment : public ASTNode {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Variable is not declared", "Cannot assign a value to the variable '" + identifier + "' since it has not been declared");
             return nullptr;
         }
+
         std::unique_ptr<CodegenResult> expressionResult = expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr || expressionResult->resultType != VALUE_CODEGEN_RESULT) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Invalid expression in variable assignment", "The expression in an assignment of variable '" + identifier + "' has an invalid value");
@@ -985,9 +1059,13 @@ class ASTVariableAssignment : public ASTNode {
             generator::fatal_error(std::chrono::high_resolution_clock::now(), "Type mismatch in variable assignment", "Cannot assign a value to the variable '" + identifier + "' which has a different type");
             return nullptr;
         }
+        llvm::Value *resultValue = operation.empty()
+            ? expressionResult->value
+            // create a binary operation with the loaded value (of the variable to assign) and the expression value
+            : createBinaryOperation(builder->CreateLoad(allocaInst->getAllocatedType(), allocaInst, identifier.c_str()), expressionResult->value, operation, builder);
         // store the value of the expression
-        builder->CreateStore(expressionResult->value, allocaInst);
-        return std::make_unique<CodegenResult>(expressionResult->value, VALUE_CODEGEN_RESULT);
+        builder->CreateStore(resultValue, allocaInst);
+        return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
     }
 };
 
@@ -1071,9 +1149,8 @@ class ASTIfStatement : public ASTNode {
         std::unique_ptr<CodegenResult> thenResult = body->codegen(ctx, builder, moduleLLVM);
         // update the thenBlock since the codegen of thenBody might change the current block
         thenBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorThenBlock = thenBlock->getTerminator();
-        // if there is no return instruction then generate the branch instruction
-        if (terminatorThenBlock == nullptr || !isa<llvm::ReturnInst>(terminatorThenBlock)) builder->CreateBr(mergeBlock);
+        // if there is no terminator instruction then generate the branch instruction
+        if (thenBlock->getTerminator() == nullptr) builder->CreateBr(mergeBlock);
 
         // emit the "merge" block
         builder->SetInsertPoint(mergeBlock);
@@ -1125,9 +1202,8 @@ class ASTIfElseStatement : public ASTNode {
         std::unique_ptr<CodegenResult> thenResult = thenBody->codegen(ctx, builder, moduleLLVM);
         // update the thenBlock since the codegen of thenBody might change the current block
         thenBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorThenBlock = thenBlock->getTerminator();
-        // if there is no return instruction then generate the mergeBlock and branch instruction
-        if (terminatorThenBlock == nullptr || !isa<llvm::ReturnInst>(terminatorThenBlock)) {
+        // if there is no terminator instruction then generate the mergeBlock and branch instruction
+        if (thenBlock->getTerminator() == nullptr) {
             mergeBlock = llvm::BasicBlock::Create(*ctx, "ifcont", fn);
             builder->CreateBr(mergeBlock);
         }
@@ -1137,9 +1213,8 @@ class ASTIfElseStatement : public ASTNode {
         std::unique_ptr<CodegenResult> elseResult = elseBody->codegen(ctx, builder, moduleLLVM);
         // update the elseBlock since the codegen of elseBody might change the current block
         elseBlock = builder->GetInsertBlock();
-        llvm::Instruction *terminatorElseBlock = elseBlock->getTerminator();
-        // if there is no return instruction then generate the mergeBlock and branch instruction
-        if (terminatorElseBlock == nullptr || !isa<llvm::ReturnInst>(terminatorElseBlock)) {
+        // if there is no terminator instruction then generate the mergeBlock and branch instruction
+        if (elseBlock->getTerminator() == nullptr) {
             if (!mergeBlock) mergeBlock = llvm::BasicBlock::Create(*ctx, "ifcont", fn);
             builder->CreateBr(mergeBlock);
         }

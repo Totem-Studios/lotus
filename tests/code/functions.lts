@@ -1,0 +1,19 @@
+fn factorial(n: i32) -> i32 {
+    if n == 0: ret 1;
+    ret n * factorial(n - 1);
+}
+
+fn sum(x: i32, y: i32) -> i32 {
+    ret x + y;
+}
+
+fn print(num: i32) {
+    printf("Num: %d\n", num);
+}
+
+fn main() {
+    printf("%d\n", sum(10, factorial(5)));
+}
+
+// output:
+// 130

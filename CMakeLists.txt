@@ -27,26 +27,28 @@ include_directories(src/parser ${LLVM_INCLUDE_DIRS})
 add_definitions(${LLVM_DEFINITIONS})
 
 add_executable(Lotus src/main.cpp
-        src/preprocessor/preprocessor.h
-        src/preprocessor/preprocessor.cpp
-        src/diagnostics/internal/internal.h
-        src/diagnostics/common.h
-        src/diagnostics/lexer.h
-        src/diagnostics/parser.h
-        src/diagnostics/preprocessor.h
-        src/parser/wrappers.h
-        src/parser/ast.h
-        src/parser/parse.h
-        src/generator/generator.h
-        src/generator/generator.cpp
-        ${BISON_Parser_OUTPUTS}
-        ${FLEX_Lexer_OUTPUTS}
         tests/errors/test_errors.cpp
         tests/lexer/test_lexer.cpp
         tests/parser/test_parser.cpp
         tests/performance/test_performance.cpp
         tests/preprocessor/test_preprocessor.cpp
+        src/diagnostics/internal/internal.h
+        src/diagnostics/common.h
+        src/diagnostics/lexer.h
+        src/diagnostics/parser.h
+        src/diagnostics/preprocessor.h
         src/diagnostics/generator.h
+        src/preprocessor/preprocessor.h
+        src/preprocessor/preprocessor.cpp
+        src/parser/wrappers.h
+        src/parser/ast.h
+        src/parser/parse.h
+        src/generator/generator.h
+        src/generator/codegen.h
+        src/generator/scopeStack.h
+        src/generator/loopContext.h
+        ${BISON_Parser_OUTPUTS}
+        ${FLEX_Lexer_OUTPUTS}
 )
 
 # Ensures that llvm links against the correct libraries

@@ -1,0 +1,20 @@
+fn main() {
+    x := 10;
+    x += 5;
+    y := x--;
+    y %= x;
+    printf("%d, %d\n", x, y);
+    x *= 3;
+    y /= 2;
+    y += 100;
+    x -= 90;
+    x %= 7;
+    y %= 34;
+    y = ++x;
+    z := y > x && false || not 0.0 && true;
+    printf("%d, %d, %d\n", x, y, z as bool);
+}
+
+// output:
+// 14, 1
+// -5, -5, 1

@@ -1,18 +1,20 @@
 // Copyright 2024 Pontus Henriksson & Neo Mannskär
 
 #pragma once
-#include <iostream>
+#include <chrono>
 #include <fstream>
+#include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
-#include <chrono>
+
 
 #include "../../config/config.h"
 
 #include "../diagnostics/internal/internal.h"
-#include "../diagnostics/preprocessor.h"
 #include "../diagnostics/lexer.h"
+#include "../diagnostics/preprocessor.h"
+
 
 typedef struct {
     std::string macro, value;
@@ -23,119 +25,177 @@ class Preprocessor {
     std::vector<std::string> utilities;
     std::vector<Macro> macros;
 
-    static std::string get_directive(unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    static std::string
+    get_directive(unsigned int* row, std::ifstream* stream,
+                  const std::chrono::high_resolution_clock::time_point& time) {
         stream->get();
         std::string directive;
-        while (!isalpha(stream->peek()) && (stream->peek() == ' ' || stream->peek() == '\t') && stream->peek() != '\n') {
+        while (!isalpha(stream->peek()) &&
+               (stream->peek() == ' ' || stream->peek() == '\t') &&
+               stream->peek() != '\n') {
             stream->get();
         }
         if (stream->peek() == '\n' || stream->peek() == '\r') {
-            preprocessor::nonfatal_error(time, "meaningless '@'", "| no directive was stated after '@'", "");
+            preprocessor::nonfatal_error(time, "meaningless '@'",
+                                         "| no directive was stated after '@'",
+                                         "");
             row++;
         } else if (!isalpha(stream->peek())) {
-            syntax::nonfatal_error(time, "illegal character", "| encountered illegal character when interpreting directive (digit/symbol): ", std::to_string(static_cast<char>(stream->peek())));
-            while (stream->peek() != '\n') stream->get();
+            syntax::nonfatal_error(
+                time, "illegal character",
+                "| encountered illegal character when interpreting directive "
+                "(digit/symbol): ",
+                std::to_string(static_cast<char>(stream->peek())));
+            while (stream->peek() != '\n')
+                stream->get();
             row++;
         } else {
-            while (stream->peek() != EOF && isalpha(stream->peek())) directive+=static_cast<char>(stream->get());
+            while (stream->peek() != EOF && isalpha(stream->peek()))
+                directive += static_cast<char>(stream->get());
         }
         return directive;
     }
 
-    static std::string get_utility(unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    static std::string
+    get_utility(unsigned int* row, std::ifstream* stream,
+                const std::chrono::high_resolution_clock::time_point& time) {
         stream->get();
         std::string utility;
-        while (!isalpha(stream->peek()) && (stream->peek() == ' ' || stream->peek() == '\t') && stream->peek() != '\n') {
+        while (!isalpha(stream->peek()) &&
+               (stream->peek() == ' ' || stream->peek() == '\t') &&
+               stream->peek() != '\n') {
             std::cerr << static_cast<char>(stream->get());
         }
         if (stream->peek() == '\n' || stream->peek() == '\r') {
-            preprocessor::nonfatal_error(time, "meaningless '@use'", "| no utility was stated after '@use'", "");
+            preprocessor::nonfatal_error(time, "meaningless '@use'",
+                                         "| no utility was stated after '@use'",
+                                         "");
             row++;
             exit(1);
         } else {
-            while (stream->peek() != EOF && stream->peek() != '\n' && stream->peek() != '\r') utility+=static_cast<char>(stream->get());
-            if (stream->peek() == '\r' || stream->peek() == '\n') row++;
+            while (stream->peek() != EOF && stream->peek() != '\n' &&
+                   stream->peek() != '\r')
+                utility += static_cast<char>(stream->get());
+            if (stream->peek() == '\r' || stream->peek() == '\n')
+                row++;
         }
         return utility;
     }
 
-    static Macro get_macro(unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    static Macro
+    get_macro(unsigned int* row, std::ifstream* stream,
+              const std::chrono::high_resolution_clock::time_point& time) {
         stream->get();
         Macro thisMacro;
-        while (stream->peek() != EOF && !isalpha(stream->peek()) && (stream->peek() == ' ' || stream->peek() == '\t') && stream->peek() != '\n') stream->get();
+        while (stream->peek() != EOF && !isalpha(stream->peek()) &&
+               (stream->peek() == ' ' || stream->peek() == '\t') &&
+               stream->peek() != '\n')
+            stream->get();
         if (stream->peek() == '\r' || stream->peek() == '\n') {
-            preprocessor::nonfatal_error(time, "missing macro", "| no useful macro was stated after '@def'", "");
+            preprocessor::nonfatal_error(
+                time, "missing macro",
+                "| no useful macro was stated after '@def'", "");
             row++;
         } else if (!isalpha(stream->peek()) && stream->peek() != '_') {
-            syntax::nonfatal_error(time, "illegal character", "| encountered illegal character when defining macro (digit/symbol): ", std::to_string(static_cast<char>(stream->peek())));
+            syntax::nonfatal_error(
+                time, "illegal character",
+                "| encountered illegal character when defining macro "
+                "(digit/symbol): ",
+                std::to_string(static_cast<char>(stream->peek())));
         } else {
-            while (isalnum(stream->peek()) || stream->peek() == '_') thisMacro.macro+=static_cast<char>(stream->get());
+            while (isalnum(stream->peek()) || stream->peek() == '_')
+                thisMacro.macro += static_cast<char>(stream->get());
         }
 
         if (stream->peek() == '\r' || stream->peek() == '\n') {
-            preprocessor::nonfatal_error(time, "missing value", "| no value was given to macro: ", thisMacro.macro);
+            preprocessor::nonfatal_error(
+                time, "missing value",
+                "| no value was given to macro: ", thisMacro.macro);
             row++;
             return thisMacro;
         } else if (stream->peek() != ' ' && stream->peek() != '\t') {
-            syntax::nonfatal_error(time, "illegal character", "| encountered illegal character when defining macro value (digit/symbol): ", std::to_string(static_cast<char>(stream->peek())));
+            syntax::nonfatal_error(
+                time, "illegal character",
+                "| encountered illegal character when defining macro value "
+                "(digit/symbol): ",
+                std::to_string(static_cast<char>(stream->peek())));
             return thisMacro;
         }
 
-        while (stream->peek() != EOF && !isalpha(stream->peek()) && (stream->peek() == ' ' || stream->peek() == '\t') && stream->peek() != '\r' && stream->peek() != '\n') stream->get();
+        while (stream->peek() != EOF && !isalpha(stream->peek()) &&
+               (stream->peek() == ' ' || stream->peek() == '\t') &&
+               stream->peek() != '\r' && stream->peek() != '\n')
+            stream->get();
         if (stream->peek() == '\r' || stream->peek() == '\n') {
             row++;
-            preprocessor::nonfatal_error(time, "missing value", "| no value was given to macro: ", thisMacro.macro);
+            preprocessor::nonfatal_error(
+                time, "missing value",
+                "| no value was given to macro: ", thisMacro.macro);
             return thisMacro;
         } else {
-            while (stream->peek() != EOF && stream->peek() != '\n' && stream->peek() != '\r') thisMacro.value+=static_cast<char>(stream->get());
-            if (stream->peek() == '\r' || stream->peek() == '\n') row++;
+            while (stream->peek() != EOF && stream->peek() != '\n' &&
+                   stream->peek() != '\r')
+                thisMacro.value += static_cast<char>(stream->get());
+            if (stream->peek() == '\r' || stream->peek() == '\n')
+                row++;
         }
         return thisMacro;
     }
 
     inline bool check_macro(const std::string& pos_macro) {
         for (const Macro& m : macros)
-            if (m.macro == pos_macro) return true;
+            if (m.macro == pos_macro)
+                return true;
         return false;
     }
 
-    inline bool test_conditional(const std::vector<Macro> *setOfMacros, const std::chrono::high_resolution_clock::time_point& time) {
+    inline bool test_conditional(
+        const std::vector<Macro>* setOfMacros,
+        const std::chrono::high_resolution_clock::time_point& time) {
         // Implement test_conditional function
         return false;  // default return statement
     }
 
-    bool handle_conditional(std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    bool handle_conditional(
+        std::ifstream* stream,
+        const std::chrono::high_resolution_clock::time_point& time) {
         stream->get();
         Macro thisMacro;
         static std::vector<Macro> setOfMacros;
 
-        while (stream->peek() == ' ' || stream->peek() == '\t') stream->get();
+        while (stream->peek() == ' ' || stream->peek() == '\t')
+            stream->get();
         switch (stream->peek()) {
-            case EOF:
-                preprocessor::nonfatal_error(time, "incomplete @if", "| no conditionals were stated");
-                return false;
-            default:
-                break;
+        case EOF:
+            preprocessor::nonfatal_error(time, "incomplete @if",
+                                         "| no conditionals were stated");
+            return false;
+        default:
+            break;
         }
 
         if (stream->peek() == '_' || isalpha(stream->peek())) {
             while (stream->peek() == '_' || isalnum(stream->peek()))
                 thisMacro.macro += static_cast<char>(stream->get());
         } else {
-            preprocessor::nonfatal_error(time, "illegal character", "encountered illegal character when defining macro");
+            preprocessor::nonfatal_error(
+                time, "illegal character",
+                "encountered illegal character when defining macro");
             return false;
         }
 
         setOfMacros.push_back(thisMacro);
 
-        while (stream->peek() == ' ' || stream->peek() == '\t') stream->get();
+        while (stream->peek() == ' ' || stream->peek() == '\t')
+            stream->get();
 
         switch (stream->peek()) {
-            case EOF:
-                preprocessor::nonfatal_error(time, "incomplete @if", "| no conditionals were stated");
-                return false;
-            default:
-                break;
+        case EOF:
+            preprocessor::nonfatal_error(time, "incomplete @if",
+                                         "| no conditionals were stated");
+            return false;
+        default:
+            break;
         }
 
         if (stream->peek() == '\r' || stream->peek() == '\n') {
@@ -151,21 +211,28 @@ class Preprocessor {
         return test_conditional(&setOfMacros, time);
     }
 
-    int handle_use(unsigned int *recursive_calls, unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    int handle_use(unsigned int* recursive_calls, unsigned int* row,
+                   std::ifstream* stream,
+                   const std::chrono::high_resolution_clock::time_point& time) {
         if (*recursive_calls >= MAX_UTILITY_RECURSION_DEPTH) {
-            preprocessor::nonfatal_error(time,
-                                         "max recursion-depth reached",
-                                         "| change codebase structure to have a max recursion depth of: " +
-                                         std::to_string(MAX_UTILITY_RECURSION_DEPTH) +
-                                         " or edit MAX_UTILITY_RECURSION_DEPTH in config");
+            preprocessor::nonfatal_error(
+                time, "max recursion-depth reached",
+                "| change codebase structure to have a max recursion depth "
+                "of: " +
+                    std::to_string(MAX_UTILITY_RECURSION_DEPTH) +
+                    " or edit MAX_UTILITY_RECURSION_DEPTH in config");
             return 1;
         } else {
             (*recursive_calls)++;
             utilities.push_back(current_directory);
             std::string directory = get_utility(row, stream, time);
-            std::cerr << "!" << directory << "!" << current_directory << "!" << std::endl;
+            std::cerr << "!" << directory << "!" << current_directory << "!"
+                      << std::endl;
             if (directory == current_directory) {
-                preprocessor::nonfatal_error(time, "self-reference in utility file", "| encountered reference to self in '@use' directive in: ", current_directory);
+                preprocessor::nonfatal_error(
+                    time, "self-reference in utility file",
+                    "| encountered reference to self in '@use' directive in: ",
+                    current_directory);
                 exit(1);
             } else {
                 current_directory = directory;
@@ -175,7 +242,9 @@ class Preprocessor {
         }
     }
 
-    inline int handle_def(unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    inline int
+    handle_def(unsigned int* row, std::ifstream* stream,
+               const std::chrono::high_resolution_clock::time_point& time) {
         const Macro thisMacro = get_macro(row, stream, time);
         size_t i = 0;
         while (i < macros.size()) {
@@ -192,24 +261,39 @@ class Preprocessor {
         return 0;
     }
 
-    int handle_ifdef(bool *isSeized, unsigned int *recursive_calls, unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    int
+    handle_ifdef(bool* isSeized, unsigned int* recursive_calls,
+                 unsigned int* row, std::ifstream* stream,
+                 const std::chrono::high_resolution_clock::time_point& time) {
         stream->get();
         std::string this_macro;
-        while (stream->peek() != EOF && !isalpha(stream->peek()) && (stream->peek() == ' ' || stream->peek() == '\t') && stream->peek() != '\n') stream->get();
+        while (stream->peek() != EOF && !isalpha(stream->peek()) &&
+               (stream->peek() == ' ' || stream->peek() == '\t') &&
+               stream->peek() != '\n')
+            stream->get();
         if (stream->peek() == '\r' || stream->peek() == '\n') {
-            preprocessor::nonfatal_error(time, "missing macro", "| no useful macro was stated after '@ifdef'", "");
+            preprocessor::nonfatal_error(
+                time, "missing macro",
+                "| no useful macro was stated after '@ifdef'", "");
             row++;
         } else if (!isalpha(stream->peek()) && stream->peek() != '_') {
-            syntax::nonfatal_error(time, "illegal character", "| encountered illegal character when constructing macro (digit/symbol): ", std::to_string(static_cast<char>(stream->peek())));
+            syntax::nonfatal_error(
+                time, "illegal character",
+                "| encountered illegal character when constructing macro "
+                "(digit/symbol): ",
+                std::to_string(static_cast<char>(stream->peek())));
         } else {
-            while (isalnum(stream->peek()) || stream->peek() == '_') this_macro += static_cast<char>(stream->get());
+            while (isalnum(stream->peek()) || stream->peek() == '_')
+                this_macro += static_cast<char>(stream->get());
         }
 
         int result = check_macro(this_macro);
-        if (result) {  // THE MACRO IS DEFINED, EXECUTE UNTIL ELIF, ELSE and ENDIF, AND SKIP OVER REST
+        if (result) {  // THE MACRO IS DEFINED, EXECUTE UNTIL ELIF, ELSE and
+                       // ENDIF, AND SKIP OVER REST
             while (stream->peek() != EOF) {
                 if (stream->peek() == '@') {
-                    const std::string directive = get_directive(row, stream, time);
+                    const std::string directive =
+                        get_directive(row, stream, time);
                     if (get_directive(row, stream, time) == "endif") {
                         break;
                     } else if (directive == "elif") {
@@ -219,16 +303,19 @@ class Preprocessor {
                         // IMPLEMENT
                         std::cout << "else!";
                     } else {
-                        handle_directives(directive, isSeized, recursive_calls, row, stream, time);
+                        handle_directives(directive, isSeized, recursive_calls,
+                                          row, stream, time);
                     }
                 } else {
                     content.push_back(static_cast<char>(stream->get()));
                 }
             }
-        } else {  // THE MACRO IS NOT DEFINED, SKIP OVER UNTIL ELIF, ELSE OR ENDIF, AND TEST CONDITIONAL OR EXECUTE OR SKIP
+        } else {  // THE MACRO IS NOT DEFINED, SKIP OVER UNTIL ELIF, ELSE OR
+                  // ENDIF, AND TEST CONDITIONAL OR EXECUTE OR SKIP
             while (stream->peek() != EOF) {
                 if (stream->peek() == '@') {
-                    const std::string directive = get_directive(row, stream, time);
+                    const std::string directive =
+                        get_directive(row, stream, time);
                     if (directive == "endif") {
                         break;
                     } else if (directive == "elif") {
@@ -236,9 +323,13 @@ class Preprocessor {
                     } else if (directive == "else") {
                         // IMPLEMENT
                     } else {
-                        while (stream->peek() != EOF && stream->peek() != '\r' && stream->peek() != '\n') stream->get();
+                        while (stream->peek() != EOF &&
+                               stream->peek() != '\r' && stream->peek() != '\n')
+                            stream->get();
                         if (stream->peek() == EOF) {
-                            preprocessor::fatal_error(time, "unclosed @ifdef", "| file ended before an '@endif'", "no @endif");
+                            preprocessor::fatal_error(
+                                time, "unclosed @ifdef",
+                                "| file ended before an '@endif'", "no @endif");
                             row++;
                         }
                     }
@@ -246,32 +337,50 @@ class Preprocessor {
                     content.push_back(static_cast<char>(stream->get()));
                 }
             }
-            if (stream->peek() == EOF || stream->peek() == '\r' || stream->peek() == '\n') {
-                preprocessor::nonfatal_error(time, "unclosed @ifdef", "| no useful macro was stated after '@ifdef'", "");
+            if (stream->peek() == EOF || stream->peek() == '\r' ||
+                stream->peek() == '\n') {
+                preprocessor::nonfatal_error(
+                    time, "unclosed @ifdef",
+                    "| no useful macro was stated after '@ifdef'", "");
                 row++;
             }
         }
         return 0;
     }
 
-    int handle_ifndef(bool *isSeized, unsigned int *recursive_calls, unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    int
+    handle_ifndef(bool* isSeized, unsigned int* recursive_calls,
+                  unsigned int* row, std::ifstream* stream,
+                  const std::chrono::high_resolution_clock::time_point& time) {
         stream->get();
         std::string this_macro;
-        while (stream->peek() != EOF && !isalpha(stream->peek()) && (stream->peek() == ' ' || stream->peek() == '\t') && stream->peek() != '\n') stream->get();
+        while (stream->peek() != EOF && !isalpha(stream->peek()) &&
+               (stream->peek() == ' ' || stream->peek() == '\t') &&
+               stream->peek() != '\n')
+            stream->get();
         if (stream->peek() == '\r' || stream->peek() == '\n') {
-            preprocessor::nonfatal_error(time, "missing macro", "| no useful macro was stated after '@ifndef'", "");
+            preprocessor::nonfatal_error(
+                time, "missing macro",
+                "| no useful macro was stated after '@ifndef'", "");
             row++;
         } else if (!isalpha(stream->peek()) && stream->peek() != '_') {
-            syntax::nonfatal_error(time, "illegal character", "| encountered illegal character when constructing macro (digit/symbol): ", std::to_string(static_cast<char>(stream->peek())));
+            syntax::nonfatal_error(
+                time, "illegal character",
+                "| encountered illegal character when constructing macro "
+                "(digit/symbol): ",
+                std::to_string(static_cast<char>(stream->peek())));
         } else {
-            while (isalnum(stream->peek()) || stream->peek() == '_') this_macro += static_cast<char>(stream->get());
+            while (isalnum(stream->peek()) || stream->peek() == '_')
+                this_macro += static_cast<char>(stream->get());
         }
 
         int result = check_macro(this_macro);
-        if (!result) {  // THE MACRO IS NOT DEFINED, EXECUTE UNTIL ELIF, ELSE and ENDIF, AND SKIP OVER REST
+        if (!result) {  // THE MACRO IS NOT DEFINED, EXECUTE UNTIL ELIF, ELSE
+                        // and ENDIF, AND SKIP OVER REST
             while (stream->peek() != EOF) {
                 if (stream->peek() == '@') {
-                    const std::string directive = get_directive(row, stream, time);
+                    const std::string directive =
+                        get_directive(row, stream, time);
                     if (get_directive(row, stream, time) == "endif") {
                         std::cerr << "\n\nifndef else endif\n\n";
                         break;
@@ -282,18 +391,22 @@ class Preprocessor {
                         // IMPLEMENT
                         std::cout << "else!";
                     } else {
-                        handle_directives(directive, isSeized, recursive_calls, row, stream, time);
+                        handle_directives(directive, isSeized, recursive_calls,
+                                          row, stream, time);
                     }
                 } else {
                     content.push_back(static_cast<char>(stream->get()));
                 }
             }
-        } else {  // THE MACRO IS DEFINED, SKIP OVER UNTIL ELIF, ELSE OR ENDIF, AND TEST CONDITIONAL OR EXECUTE OR SKIP
+        } else {  // THE MACRO IS DEFINED, SKIP OVER UNTIL ELIF, ELSE OR ENDIF,
+                  // AND TEST CONDITIONAL OR EXECUTE OR SKIP
             while (stream->peek() != EOF) {
                 if (stream->peek() == '@') {
-                    const std::string directive = get_directive(row, stream, time);
+                    const std::string directive =
+                        get_directive(row, stream, time);
                     if (directive == "endif") {
-                        return 0;  // This means that the ifndef has closed, terminate process.
+                        return 0;  // This means that the ifndef has closed,
+                                   // terminate process.
                     } else if (directive == "elif") {
                         // IMPLEMENT
                         std::cout << "elif!";
@@ -301,9 +414,13 @@ class Preprocessor {
                         // IMPLEMENT
                         std::cout << "else!";
                     } else {
-                        while (stream->peek() != EOF && stream->peek() != '\r' && stream->peek() != '\n') stream->get();
+                        while (stream->peek() != EOF &&
+                               stream->peek() != '\r' && stream->peek() != '\n')
+                            stream->get();
                         if (stream->peek() == EOF) {
-                            preprocessor::fatal_error(time, "unclosed @ifndef", "| file ended before an '@endif'", "no @endif");
+                            preprocessor::fatal_error(
+                                time, "unclosed @ifndef",
+                                "| file ended before an '@endif'", "no @endif");
                             row++;
                         }
                     }
@@ -315,9 +432,13 @@ class Preprocessor {
         return 0;
     }
 
-    int handle_directives(const std::string& directive, bool *isSeized, unsigned int *recursive_calls, unsigned int *row, std::ifstream *stream, const std::chrono::high_resolution_clock::time_point& time) {
+    int handle_directives(
+        const std::string& directive, bool* isSeized,
+        unsigned int* recursive_calls, unsigned int* row, std::ifstream* stream,
+        const std::chrono::high_resolution_clock::time_point& time) {
         if (directive == "use") {
-            if (handle_use(recursive_calls, row, stream, time) == 1) return 1;
+            if (handle_use(recursive_calls, row, stream, time) == 1)
+                return 1;
         } else if (directive == "seize") {
             for (const std::string& s : utilities) {
                 if (s == current_directory) {
@@ -344,9 +465,14 @@ class Preprocessor {
         } else if (directive == "elif") {
             // There is an unclosed conditional: @if, @ifdef, @ifndef
         } else if (directive == "endif") {
-            preprocessor::nonfatal_error(time, "missing conditional beginning", "| encountered conditional terminator without any conditional beginning", "");
+            preprocessor::nonfatal_error(time, "missing conditional beginning",
+                                         "| encountered conditional terminator "
+                                         "without any conditional beginning",
+                                         "");
         } else {
-            preprocessor::fatal_error(time, "unknown directive", "| encountered unknown preprocessor directive", directive);
+            preprocessor::fatal_error(
+                time, "unknown directive",
+                "| encountered unknown preprocessor directive", directive);
         }
         return 0;
     }
@@ -358,15 +484,19 @@ class Preprocessor {
         std::ifstream stream(current_directory, std::ios::binary);
         if (!stream) {
             if (recursive_calls == 0) {
-                internal::fatal_error(time, "filestream error", "| failed to open directory: ", current_directory);
+                internal::fatal_error(
+                    time, "filestream error",
+                    "| failed to open directory: ", current_directory);
             } else {
                 return 0;
             }
         }
         while (stream.peek() != EOF) {
             if (stream.peek() == '@') {
-                const std::string directive = get_directive(&row, &stream, time);
-                handle_directives(directive, &isSeized, &recursive_calls, &row, &stream, time);
+                const std::string directive =
+                    get_directive(&row, &stream, time);
+                handle_directives(directive, &isSeized, &recursive_calls, &row,
+                                  &stream, time);
             } else {
                 content += static_cast<char>(stream.get());
             }
@@ -377,11 +507,17 @@ class Preprocessor {
 
  public:
     std::string content;
-    explicit Preprocessor(std::string directory, const std::chrono::high_resolution_clock::time_point& time): current_directory(std::move(directory))  {
+    explicit Preprocessor(
+        std::string directory,
+        const std::chrono::high_resolution_clock::time_point& time)
+        : current_directory(std::move(directory)) {
         preprocess(time);
         const auto end_time = std::chrono::high_resolution_clock::now();
-        const auto prep_time = std::chrono::duration_cast<std::chrono::milliseconds>(end_time - time);
-        std::cout << "\n\npreprocessor finished after " << prep_time.count() << " ms" << std::endl;
+        const auto prep_time =
+            std::chrono::duration_cast<std::chrono::milliseconds>(end_time -
+                                                                  time);
+        std::cout << "\n\npreprocessor finished after " << prep_time.count()
+                  << " ms" << std::endl;
     }
 
     ~Preprocessor() = default;

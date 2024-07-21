@@ -230,6 +230,7 @@ void yyerror(const char *s) {
     parser::fatal_error(std::chrono::high_resolution_clock::now(), s, "A parsing error occurred on line: " + std::to_string(yylineno));
 }
 
+// the function to call to run the bison grammar
 std::unique_ptr<AST> &parse(const std::string& filename) {
     FILE *file = fopen(filename.c_str(), "r");
     // yyin is the file that bison will read from

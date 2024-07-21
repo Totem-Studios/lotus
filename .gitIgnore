@@ -38,6 +38,9 @@ Thumbs.db
 *.env
 !*.env.example
 
+# Ignore LLVM IR files
+*.ll
+
 # Ignore .lts, .ltsu, and .lotus files everywhere
 *.lts
 *.ltsu

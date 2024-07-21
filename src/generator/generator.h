@@ -1,6 +1,8 @@
-// Copyright 2024 Pontus Henriksson & Neo Mannskär, 2024 Lucas Norman
+// Copyright 2024 Pontus Henriksson, Neo Mannskär & Lucas Norman
 
 #pragma once
+
+#include <iostream>
 #include <memory>
 
 #include "llvm/IR/IRBuilder.h"
@@ -9,8 +11,9 @@
 #include "llvm/IR/Verifier.h"
 #include "llvm/Support/raw_ostream.h"
 
-#include "./ast.h"
-#include "./parse.h"
+#include "../parser/parse.h"
+#include "codegen.h"
+#include "generator.h"
 
 class Generator {
  private:
@@ -19,32 +22,38 @@ class Generator {
     std::unique_ptr<llvm::Module> moduleLLVM;
 
  public:
-    explicit Generator(const std::string& filename) {
+    explicit Generator(const std::string& inputFilename,
+                       const std::string& outputFilename) {
         ctx = std::make_unique<llvm::LLVMContext>();
         moduleLLVM = std::make_unique<llvm::Module>("LotusLLVM", *ctx);
         builder = std::make_unique<llvm::IRBuilder<>>(*ctx);
         setupExternFunctions();
-        generate(filename);
+        generate(inputFilename, outputFilename);
     }
 
  private:
-    void generate(const std::string& filename) {
+    void generate(const std::string& inputFilename,
+                  const std::string& outputFilename) {
         // create the ast
-        std::unique_ptr<AST> &ast = parse(filename);
+        std::unique_ptr<AST>& ast = parse(inputFilename);
         std::cout << "[Parsed AST]\n";
         ast->print();
+
         // generates the LLVM IR for the ast
         ast->codegen(ctx, builder, moduleLLVM);
-
         std::cout << "\n[Generated IR]\n";
         moduleLLVM->print(llvm::outs(), nullptr);
 
         // save the module IR to a file
-        // saveModuleToFile(TODO);
+        if (!outputFilename.empty())
+            saveModuleToFile(outputFilename);
     }
 
     void setupExternFunctions() {
-        moduleLLVM->getOrInsertFunction("printf", llvm::FunctionType::get(builder->getInt32Ty(), builder->getInt8Ty()->getPointerTo(), true));
+        moduleLLVM->getOrInsertFunction(
+            "printf", llvm::FunctionType::get(
+                          builder->getInt32Ty(),
+                          builder->getInt8Ty()->getPointerTo(), true));
     }
 
     void saveModuleToFile(const std::string& filename) {

@@ -24,6 +24,13 @@
 static llvm::Type*
 getLLVMType(const std::string& type,
             const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+    // if the type is a pointer, then recursively get the pointer type until it
+    // is not a pointer anymore
+    if (type.ends_with('*')) {
+        std::string modifiedType = type.substr(0, type.length() - 1);
+        // get the pointer type of the type when removing the asterisk
+        return llvm::PointerType::get(getLLVMType(modifiedType, builder), 0);
+    }
     if (type == "bool") {
         return builder->getInt1Ty();
     } else if (type == "i8" || type == "char") {
@@ -272,7 +279,7 @@ std::unique_ptr<CodegenResult> ASTVariableExpression::codegen(
     return std::make_unique<CodegenResult>(
         builder->CreateLoad(allocaInst->getAllocatedType(), allocaInst,
                             identifier.c_str()),
-        VALUE_CODEGEN_RESULT);
+        R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -280,7 +287,7 @@ ASTInteger::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                     const std::unique_ptr<llvm::IRBuilder<>>& builder,
                     const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(getIntegerValue(number, builder),
-                                           VALUE_CODEGEN_RESULT);
+                                           R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -288,7 +295,7 @@ ASTBool::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(builder->getInt1(value),
-                                           VALUE_CODEGEN_RESULT);
+                                           R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -297,7 +304,7 @@ ASTFloat::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                   const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
         llvm::ConstantFP::get(builder->getDoubleTy(), number),
-        VALUE_CODEGEN_RESULT);
+        R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -305,7 +312,7 @@ ASTString::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                    const std::unique_ptr<llvm::IRBuilder<>>& builder,
                    const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
-        builder->CreateGlobalStringPtr(text, "strlit"), VALUE_CODEGEN_RESULT);
+        builder->CreateGlobalStringPtr(text, "strlit"), R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -313,7 +320,7 @@ ASTChar::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(builder->getInt8(character),
-                                           VALUE_CODEGEN_RESULT);
+                                           R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -324,16 +331,16 @@ ASTTypeCast::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         expression->codegen(ctx, builder, moduleLLVM);
     // check if the expression result is valid
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        expressionResult->resultType != R_VALUE_CODEGEN_RESULT) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Invalid expression in type cast operator",
             "The expression in the type cast has an invalid value");
     }
     return std::make_unique<CodegenResult>(
-        createCast(expressionResult->value, getLLVMType(type, builder),
+        createCast(expressionResult->getValue(), getLLVMType(type, builder),
                    builder),
-        VALUE_CODEGEN_RESULT);
+        R_VALUE_CODEGEN_RESULT);
 }
 
 // this could also be called a scope
@@ -369,7 +376,7 @@ std::unique_ptr<CodegenResult> ASTBinaryOperator::codegen(
         right->codegen(ctx, builder, moduleLLVM);
     // check if both the left and right results are valid
     if (leftResult == nullptr ||
-        leftResult->resultType != VALUE_CODEGEN_RESULT) {
+        !leftResult->isValueCodegenResultType()) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Invalid left hand side of binary operator",
                                "The left hand side of the binary operator '" +
@@ -377,7 +384,7 @@ std::unique_ptr<CodegenResult> ASTBinaryOperator::codegen(
         return nullptr;
     }
     if (rightResult == nullptr ||
-        rightResult->resultType != VALUE_CODEGEN_RESULT) {
+        !rightResult->isValueCodegenResultType()) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Invalid right hand side of binary operator",
                                "The right hand side of the binary operator '" +
@@ -385,9 +392,9 @@ std::unique_ptr<CodegenResult> ASTBinaryOperator::codegen(
         return nullptr;
     }
     return std::make_unique<CodegenResult>(
-        createBinaryOperation(leftResult->value, rightResult->value, operation,
+        createBinaryOperation(leftResult->getValue(), rightResult->getValue(), operation,
                               builder),
-        VALUE_CODEGEN_RESULT);
+        R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
@@ -398,44 +405,44 @@ std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
         expression->codegen(ctx, builder, moduleLLVM);
     // check if the expression result is valid
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Invalid expression in unary operator",
                                "The expression in the unary operator '" +
                                    operation + "' has an invalid value");
     }
     bool isFloatingPointOperation =
-        expressionResult->value->getType()->isFloatingPointTy();
-    bool isIntegerOperation = expressionResult->value->getType()->isIntegerTy();
+        expressionResult->getValue()->getType()->isFloatingPointTy();
+    bool isIntegerOperation = expressionResult->getValue()->getType()->isIntegerTy();
     llvm::Value* resultValue = nullptr;
     if (operation == "!") {
         resultValue = builder->CreateNot(
-            getBooleanValue(expressionResult->value, builder), "nottmp");
+            getBooleanValue(expressionResult->getValue(), builder), "nottmp");
     } else if (operation == "-") {
         if (isFloatingPointOperation) {
             resultValue =
-                builder->CreateFNeg(expressionResult->value, "negtmp");
+                builder->CreateFNeg(expressionResult->getValue(), "negtmp");
         } else if (isIntegerOperation) {
-            resultValue = builder->CreateNeg(expressionResult->value, "negtmp");
+            resultValue = builder->CreateNeg(expressionResult->getValue(), "negtmp");
         }
     } else if (operation == "+") {
         // does not change the value (but check if it is used with valid types
         // anyway)
         if (isFloatingPointOperation || isIntegerOperation)
-            resultValue = expressionResult->value;
+            resultValue = expressionResult->getValue();
     }
     // check if the resultValue is a nullptr, then throw an error
     if (!resultValue) {
         std::string stringType;
         llvm::raw_string_ostream stream(stringType);
-        expressionResult->value->getType()->print(stream);
+        expressionResult->getValue()->getType()->print(stream);
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(), "Invalid unary operator",
             "The unary operator '" + operation +
                 "' is not supported with the type '" + stringType + "'");
         return nullptr;
     }
-    return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(resultValue, R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult> ASTIncrementDecrementOperator::codegen(
@@ -526,7 +533,22 @@ std::unique_ptr<CodegenResult> ASTIncrementDecrementOperator::codegen(
                                    "' is not supported");
         return nullptr;
     }
-    return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(resultValue, R_VALUE_CODEGEN_RESULT);
+}
+
+std::unique_ptr<CodegenResult> ASTAddressOfOperator::codegen(
+        const std::unique_ptr<llvm::LLVMContext>& ctx,
+        const std::unique_ptr<llvm::IRBuilder<>>& builder,
+        const std::unique_ptr<llvm::Module>& moduleLLVM) const {
+    // get the alloca instance
+    llvm::AllocaInst* allocaInstance = scopes::getAllocaInst(identifier);
+    if (allocaInstance == nullptr) {
+        generator::fatal_error(
+                std::chrono::high_resolution_clock::now(), "Unknown variable name",
+                "Cannot take the address of the variable '" + identifier + "', because it could not be found");
+        return nullptr;
+    }
+    return std::make_unique<CodegenResult>(allocaInstance, R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -679,7 +701,7 @@ ASTWhileLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Invalid expression in while loop",
@@ -687,7 +709,7 @@ ASTWhileLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition = getBooleanValue(expressionResult->value, builder);
+    llvm::Value* condition = getBooleanValue(expressionResult->getValue(), builder);
     // generate the condition
     builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
@@ -742,7 +764,7 @@ ASTForLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Invalid expression in for loop",
@@ -750,7 +772,7 @@ ASTForLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition = getBooleanValue(expressionResult->value, builder);
+    llvm::Value* condition = getBooleanValue(expressionResult->getValue(), builder);
     // generate the condition
     builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
@@ -792,15 +814,15 @@ std::unique_ptr<CodegenResult> ASTReturnStatement::codegen(
         std::unique_ptr<CodegenResult> expressionResult =
             expression->codegen(ctx, builder, moduleLLVM);
         if (expressionResult == nullptr ||
-            expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+            !expressionResult->isValueCodegenResultType()) {
             generator::fatal_error(
                 std::chrono::high_resolution_clock::now(),
                 "Invalid expression in return statement",
                 "The return statement does not have a valid expression");
             return nullptr;
         }
-        builder->CreateRet(expressionResult->value);
-        returnType = expressionResult->value->getType();
+        builder->CreateRet(expressionResult->getValue());
+        returnType = expressionResult->getValue()->getType();
     } else {
         // if the return statement has no expression then generate a void return
         builder->CreateRetVoid();
@@ -898,14 +920,14 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Invalid expression in variable assignment",
                                "The expression in an assignment of variable '" +
                                    identifier + "' has an invalid value");
         return nullptr;
     }
-    if (expressionResult->value->getType() != allocaInst->getAllocatedType()) {
+    if (expressionResult->getValue()->getType() != allocaInst->getAllocatedType()) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Type mismatch in variable assignment",
                                "Cannot assign a value to the variable '" +
@@ -914,16 +936,16 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
     }
     llvm::Value* resultValue =
         operation.empty()
-            ? expressionResult->value
+            ? expressionResult->getValue()
             // create a binary operation with the loaded value (of the variable
             // to assign) and the expression value
             : createBinaryOperation(
                   builder->CreateLoad(allocaInst->getAllocatedType(),
                                       allocaInst, identifier.c_str()),
-                  expressionResult->value, operation, builder);
+                  expressionResult->getValue(), operation, builder);
     // store the value of the expression
     builder->CreateStore(resultValue, allocaInst);
-    return std::make_unique<CodegenResult>(resultValue, VALUE_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(resultValue, R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
@@ -940,7 +962,7 @@ std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Invalid expression in variable definition",
@@ -950,13 +972,13 @@ std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
     }
     // find the resulting type of the definition
     llvm::Type* resultingType = type == "auto"
-                                    ? expressionResult->value->getType()
+                                    ? expressionResult->getValue()->getType()
                                     : getLLVMType(type, builder);
     // if the type is not auto, then cast from the expression type to the type
     llvm::Value* resultingValue =
         type == "auto"
-            ? expressionResult->value
-            : createCast(expressionResult->value, resultingType, builder);
+            ? expressionResult->getValue()
+            : createCast(expressionResult->getValue(), resultingType, builder);
     // allocate space for the variable and store the value of the expression
     llvm::AllocaInst* allocaInstance = createEntryBlockAlloca(
         builder->GetInsertBlock()->getParent(), identifier, resultingType);
@@ -972,7 +994,7 @@ ASTIfStatement::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Invalid expression in if statement",
@@ -981,7 +1003,7 @@ ASTIfStatement::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     }
 
     // get the boolean value of the expression
-    llvm::Value* condition = getBooleanValue(expressionResult->value, builder);
+    llvm::Value* condition = getBooleanValue(expressionResult->getValue(), builder);
 
     // create the branches
     llvm::Function* fn = builder->GetInsertBlock()->getParent();
@@ -1016,7 +1038,7 @@ std::unique_ptr<CodegenResult> ASTIfElseStatement::codegen(
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
     if (expressionResult == nullptr ||
-        expressionResult->resultType != VALUE_CODEGEN_RESULT) {
+        !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Invalid expression in if-else statement",
@@ -1024,7 +1046,7 @@ std::unique_ptr<CodegenResult> ASTIfElseStatement::codegen(
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition = getBooleanValue(expressionResult->value, builder);
+    llvm::Value* condition = getBooleanValue(expressionResult->getValue(), builder);
 
     // create the branches
     llvm::Function* fn = builder->GetInsertBlock()->getParent();
@@ -1113,7 +1135,7 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
             argumentList[i]->codegen(ctx, builder, moduleLLVM);
         // check if the value is valid
         if (argumentResult == nullptr ||
-            argumentResult->resultType != VALUE_CODEGEN_RESULT) {
+            !argumentResult->isValueCodegenResultType()) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                    "Invalid function argument",
                                    "The " + std::to_string(i + 1) +
@@ -1124,7 +1146,7 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
 
         // check if the argument type match the parameter type
         if (i <= numFixedParams &&
-            argumentResult->value->getType() !=
+            argumentResult->getValue()->getType() !=
                 calleeFn->getFunctionType()->getParamType(i)) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                    "Incorrect arguments passed",
@@ -1134,7 +1156,7 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
             return nullptr;
         }
 
-        args.push_back(argumentResult->value);
+        args.push_back(argumentResult->getValue());
     }
     // if the function has a void return type then just return nullptr else
     // return the call result
@@ -1143,5 +1165,5 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
         return nullptr;
     }
     return std::make_unique<CodegenResult>(
-        builder->CreateCall(calleeFn, args, "calltmp"), VALUE_CODEGEN_RESULT);
+        builder->CreateCall(calleeFn, args, "calltmp"), R_VALUE_CODEGEN_RESULT);
 }

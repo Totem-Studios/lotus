@@ -15,7 +15,8 @@
 #include "../diagnostics/generator.h"
 
 enum CodegenResultType {
-    VALUE_CODEGEN_RESULT,
+    L_VALUE_CODEGEN_RESULT,
+    R_VALUE_CODEGEN_RESULT,
     PARAM_CODEGEN_RESULT,
     FUNCTION_CODEGEN_RESULT
 };
@@ -34,20 +35,46 @@ struct ParamCodegenResult {
 // to handle multiple return types like llvm::Value* and llvm::Function
 struct CodegenResult {
     union {
-        llvm::Value* value;
+        llvm::Value* rValue;
+        struct {
+            llvm::Value* value;
+            llvm::AllocaInst* pointer;
+        } lValue;
         ParamCodegenResult param;
         llvm::Function* fn;
     };
     CodegenResultType resultType;
 
+    // create an lValue with a value only
     CodegenResult(llvm::Value* value, CodegenResultType resultType)
-        : value(value), resultType(resultType) {}
+        : rValue(value), resultType(resultType) {}
+    // create an rValue with a value and a pointer
+    CodegenResult(llvm::Value* value, llvm::AllocaInst* pointer, CodegenResultType resultType)
+            : lValue(value, pointer), resultType(resultType) {}
     CodegenResult(const ParamCodegenResult& param, CodegenResultType resultType)
         : param(param), resultType(resultType) {}
     CodegenResult(llvm::Function* fn, CodegenResultType resultType)
         : fn(fn), resultType(resultType) {}
 
     ~CodegenResult() {}
+
+    // is used to check if the codegen result contains any type of value
+    [[nodiscard]] inline bool isValueCodegenResultType() const {
+        return resultType == L_VALUE_CODEGEN_RESULT ||
+            resultType == R_VALUE_CODEGEN_RESULT;
+    }
+
+    // is used to get the llvm value of an lValue and rValue
+    [[nodiscard]] llvm::Value* getValue() const {
+        if (resultType == R_VALUE_CODEGEN_RESULT) return rValue;
+        return lValue.value;
+    }
+
+    // used to get the pointer if it's an lValue
+    [[nodiscard]] llvm::AllocaInst* getPointer() const {
+        if (resultType == R_VALUE_CODEGEN_RESULT) return nullptr;
+        return lValue.pointer;
+    }
 };
 
 class ASTNode {
@@ -308,6 +335,26 @@ class ASTIncrementDecrementOperator : public ASTNode {
                   << "Identifier: " << identifier << "\n";
         std::cout << std::string((depth + 1) * 2, ' ')
                   << "Operator Type: " << operation << "\n";
+    }
+
+    [[nodiscard]] std::unique_ptr<CodegenResult>
+    codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
+            const std::unique_ptr<llvm::IRBuilder<>>& builder,
+            const std::unique_ptr<llvm::Module>& moduleLLVM) const override;
+};
+
+class ASTAddressOfOperator : public ASTNode {
+    std::string identifier;
+
+ public:
+    explicit ASTAddressOfOperator(std::string identifier)
+            : identifier(std::move(identifier)) {}
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ')
+                  << "Address Of Operator:\n";
+        std::cout << std::string((depth + 1) * 2, ' ')
+                  << "Identifier: " << identifier << "\n";
     }
 
     [[nodiscard]] std::unique_ptr<CodegenResult>

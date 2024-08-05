@@ -1,12 +1,6 @@
 fn main() {
-    a: char = 'a';
-    b: char = 'b';
-    c: char = 'c';
-    x: char* = &a;
-    y: char* = &b;
-    z: char* = &c;
-    printf("%c%c%c | %s%s%s\n", a, b, c, x, y, z);
-    printf("Hello, world!\n");
-    printf("This file will be used for general testing and for the current feature that is being implemented.\n");
-    printf("The other files in the tests/code/ folder will be for testing specific features, like loops and variables.\n");
+    x: i32 = 15;
+    y: i32* = &x;
+    z: i32 = *y;
+    printf("z: %d\n", z);
 }

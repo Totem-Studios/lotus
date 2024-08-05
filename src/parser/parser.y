@@ -220,6 +220,7 @@ factor2
     | TOK_INCREMENT TOK_IDENTIFIER {$$ = new ASTIncrementDecrementOperator($2->getString(), "++x"); delete $2;}
     | TOK_DECREMENT TOK_IDENTIFIER {$$ = new ASTIncrementDecrementOperator($2->getString(), "--x"); delete $2;}
     | TOK_AMPERSAND TOK_IDENTIFIER {$$ = new ASTAddressOfOperator($2->getString()); delete $2;}
+    | TOK_ASTERISK expression {$$ = new ASTDereferenceOperator($2);}
     | factor2 TOK_AS TOK_TYPE {$$ = new ASTTypeCast($1, $3->getString()); delete $3;}
     | factor2 TOK_TILDA TOK_TYPE {$$ = new ASTTypeCast($1, $3->getString()); delete $3;}
     | TOK_L_PAREN expression TOK_R_PAREN {$$ = $2;}

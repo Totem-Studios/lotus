@@ -1,5 +1,15 @@
 fn main() {
-    printf("Hello, world!\n");
-    printf("This file will be used for general testing and for the current feature that is being implemented.\n");
-    printf("The other files in the tests/code/ folder will be for testing specific features, like loops and variables.\n");
+    x: i32 = 15;
+    y: i32* = &x;
+    z: i32 = *y;
+    printf("z: %d\n", z);
+    x = 30;
+    printf("x: %d, *y: %d\n", x, *y);
+    *y = 45;
+    printf("x: %d, *y: %d\n", x, *y);
 }
+
+// output:
+// z: 15
+// x: 30, *y: 30
+// x: 45, *y: 45

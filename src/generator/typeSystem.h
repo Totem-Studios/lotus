@@ -17,43 +17,63 @@
 namespace typeSystem {
 
 struct Type {
+ private:
     std::string type;
 
  public:
     Type() = default;
     explicit Type(std::string type) : type(std::move(type)) {}
-    Type(const Type& type) : type(std::move(type.toString())) {}
+    Type(const Type& other) = default;
 
-    [[nodiscard]] inline std::string toString() const { return type; };
-    [[nodiscard]] llvm::Type* toLLVMType(const std::unique_ptr<llvm::IRBuilder<>>& builder) const {
-        // if the type is a pointer, then recursively get the pointer type until it is not a pointer anymore
+    bool operator!=(const Type& otherType) const {
+        return type != otherType.type;
+    }
+
+    [[nodiscard]] std::string toString() const { return type; }
+    [[nodiscard]] llvm::Type*
+    toLLVMType(const std::unique_ptr<llvm::IRBuilder<>>& builder) const {
+        // if the type is a pointer, then recursively get the pointer type until
+        // it is not a pointer anymore
         if (isPointerType()) {
-            // get the pointer type of the type when removing the asterisk (the element type)
-            return llvm::PointerType::get(getElementType().toLLVMType(builder), 0);
+            // get the pointer type of the type when removing the asterisk (the
+            // element type)
+            return llvm::PointerType::get(getElementType().toLLVMType(builder),
+                                          0);
         }
 
-        if (type == "bool") return builder->getInt1Ty();
-        if (type == "i8" || type == "char") return builder->getInt8Ty();
-        if (type == "i16") return builder->getInt16Ty();
-        if (type == "i32") return builder->getInt32Ty();
-        if (type == "i64") return builder->getInt64Ty();
-        if (type == "f32") return builder->getFloatTy();
-        if (type == "f64") return builder->getDoubleTy();
-        if (type == "str") return llvm::PointerType::get(builder->getInt8Ty(), 0);
+        if (type == "bool")
+            return builder->getInt1Ty();
+        if (type == "i8" || type == "char")
+            return builder->getInt8Ty();
+        if (type == "i16")
+            return builder->getInt16Ty();
+        if (type == "i32")
+            return builder->getInt32Ty();
+        if (type == "i64")
+            return builder->getInt64Ty();
+        if (type == "f32")
+            return builder->getFloatTy();
+        if (type == "f64")
+            return builder->getDoubleTy();
+        if (type == "str")
+            return llvm::PointerType::get(builder->getInt8Ty(), 0);
         // return a void type
         return builder->getVoidTy();
-    };
-    [[nodiscard]] inline bool isSigned() const { return type != "u8" && type != "u16" && type != "u32" && type != "u64"; }
-    [[nodiscard]] inline bool isPointerType() const { return type.ends_with('*'); }
-    [[nodiscard]] inline Type createPointerType() const { return Type{type + "*"}; }
-    [[nodiscard]] inline Type getElementType() const { return Type{type.substr(0, type.length() - 1)}; }
+    }
+    [[nodiscard]] bool isSigned() const {
+        return type != "u8" && type != "u16" && type != "u32" && type != "u64";
+    }
+    [[nodiscard]] bool isPointerType() const { return type.ends_with('*'); }
+    [[nodiscard]] Type createPointerType() const { return Type{type + "*"}; }
+    [[nodiscard]] Type getElementType() const {
+        return Type{type.substr(0, type.length() - 1)};
+    }
 };
 
 // helper function to get the llvm::Value* from an integer (since it might vary
 // in bit-width)
-static Type
-getIntegerType(uint64_t number,
-                const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+static Type getIntegerType(uint64_t number,
+                           const std::unique_ptr<llvm::IRBuilder<>>& builder) {
     if (number <= 2147483647) {
         // limit for signed i32
         return Type{"i32"};
@@ -62,9 +82,9 @@ getIntegerType(uint64_t number,
         return Type{"i64"};
     } else {
         generator::fatal_error(
-                std::chrono::high_resolution_clock::now(),
-                "Invalid integer literal",
-                "The integer is to large to be represented as an integer");
+            std::chrono::high_resolution_clock::now(),
+            "Invalid integer literal",
+            "The integer is to large to be represented as an integer");
         return Type{""};
     }
 }
@@ -82,9 +102,9 @@ getIntegerValue(uint64_t number,
         return builder->getInt64(number);
     } else {
         generator::fatal_error(
-                std::chrono::high_resolution_clock::now(),
-                "Invalid integer literal",
-                "The integer is to large to be represented as an integer");
+            std::chrono::high_resolution_clock::now(),
+            "Invalid integer literal",
+            "The integer is to large to be represented as an integer");
         return nullptr;
     }
 }
@@ -93,55 +113,55 @@ getIntegerValue(uint64_t number,
 static llvm::Value*
 createCast(llvm::Value* value, llvm::Type* type,
            const std::unique_ptr<llvm::IRBuilder<>>& builder) {
-        llvm::Type* srcType = value->getType();
+    llvm::Type* srcType = value->getType();
 
-        if (srcType == type) {
-            // no cast needed
-            return value;
-        }
-
-        // if the source type is bool
-        if (srcType->isIntegerTy(1)) {
-            if (type->isIntegerTy()) {
-                return builder->CreateCast(llvm::Instruction::ZExt, value, type,
-                                           "tmpcast");
-            } else if (type->isFloatingPointTy()) {
-                return builder->CreateCast(llvm::Instruction::UIToFP, value, type,
-                                           "tmpcast");
-            }
-        }
-
-        // if destination type is bool, then check if the value does not equal 0
-        if (type->isIntegerTy(1)) {
-            if (srcType->isIntegerTy()) {
-                return builder->CreateICmpNE(
-                        value, llvm::ConstantInt::get(srcType, 0), "cmptozero");
-            } else if (srcType->isFloatingPointTy()) {
-                return builder->CreateFCmpONE(
-                        value, llvm::ConstantFP::get(srcType, 0), "cmptozero");
-            }
-        }
-
-        // if the src type is int or float and type is int or float
-        if ((srcType->isIntegerTy() || srcType->isFloatingPointTy()) &&
-            (type->isIntegerTy() || type->isFloatingPointTy())) {
-            llvm::CastInst::CastOps castOperation =
-                    llvm::CastInst::getCastOpcode(value, true, type, true);
-            return builder->CreateCast(castOperation, value, type, "tmpcast");
-        }
-
-        // throw error, cast is not supported
-        std::string stringSrcType;
-        std::string stringType;
-        llvm::raw_string_ostream stream1(stringSrcType);
-        llvm::raw_string_ostream stream2(stringType);
-        srcType->print(stream1);
-        type->print(stream2);
-        generator::fatal_error(
-                std::chrono::high_resolution_clock::now(), "Invalid cast",
-                "Cannot cast from '" + stringSrcType + "' to '" + stringType + "'");
-        return nullptr;
+    if (srcType == type) {
+        // no cast needed
+        return value;
     }
+
+    // if the source type is bool
+    if (srcType->isIntegerTy(1)) {
+        if (type->isIntegerTy()) {
+            return builder->CreateCast(llvm::Instruction::ZExt, value, type,
+                                       "tmpcast");
+        } else if (type->isFloatingPointTy()) {
+            return builder->CreateCast(llvm::Instruction::UIToFP, value, type,
+                                       "tmpcast");
+        }
+    }
+
+    // if destination type is bool, then check if the value does not equal 0
+    if (type->isIntegerTy(1)) {
+        if (srcType->isIntegerTy()) {
+            return builder->CreateICmpNE(
+                value, llvm::ConstantInt::get(srcType, 0), "cmptozero");
+        } else if (srcType->isFloatingPointTy()) {
+            return builder->CreateFCmpONE(
+                value, llvm::ConstantFP::get(srcType, 0), "cmptozero");
+        }
+    }
+
+    // if the src type is int or float and type is int or float
+    if ((srcType->isIntegerTy() || srcType->isFloatingPointTy()) &&
+        (type->isIntegerTy() || type->isFloatingPointTy())) {
+        llvm::CastInst::CastOps castOperation =
+            llvm::CastInst::getCastOpcode(value, true, type, true);
+        return builder->CreateCast(castOperation, value, type, "tmpcast");
+    }
+
+    // throw error, cast is not supported
+    std::string stringSrcType;
+    std::string stringType;
+    llvm::raw_string_ostream stream1(stringSrcType);
+    llvm::raw_string_ostream stream2(stringType);
+    srcType->print(stream1);
+    type->print(stream2);
+    generator::fatal_error(
+        std::chrono::high_resolution_clock::now(), "Invalid cast",
+        "Cannot cast from '" + stringSrcType + "' to '" + stringType + "'");
+    return nullptr;
+}
 
 // helper function for getting the boolean representation of a llvm::Value
 static llvm::Value*
@@ -151,9 +171,14 @@ getBooleanValue(llvm::Value* value,
 }
 
 // helper function to get the resulting types from a binary operation
-static Type getResultTypeFromBinaryOperation(const Type& leftType, const Type& rightType /* may be necessary for future operations */, const std::string& operation) {
-    // of the operation is a boolean operation, then return a boolean (because both sides of the operation are cast to boolean)
-    if (operation == "&&" || operation == "||") return Type{"bool"};
+static Type getResultTypeFromBinaryOperation(
+    const Type& leftType,
+    const Type& rightType /* may be necessary for future operations */,
+    const std::string& operation) {
+    // of the operation is a boolean operation, then return a boolean (because
+    // both sides of the operation are cast to boolean)
+    if (operation == "&&" || operation == "||")
+        return Type{"bool"};
     // otherwise just return any type, like the left one
     return leftType;
 }
@@ -171,12 +196,13 @@ createBinaryOperation(llvm::Value* leftValue, llvm::Value* rightValue,
     // these can be performed with different types because both sides are cast
     // to booleans
     if (operation == "&&") {
-        return builder->CreateAnd(typeSystem::getBooleanValue(leftValue, builder),
-                                  typeSystem::getBooleanValue(rightValue, builder),
-                                  "andtmp");
+        return builder->CreateAnd(
+            typeSystem::getBooleanValue(leftValue, builder),
+            typeSystem::getBooleanValue(rightValue, builder), "andtmp");
     } else if (operation == "||") {
-        return builder->CreateOr(typeSystem::getBooleanValue(leftValue, builder),
-                                 typeSystem::getBooleanValue(rightValue, builder), "ortmp");
+        return builder->CreateOr(
+            typeSystem::getBooleanValue(leftValue, builder),
+            typeSystem::getBooleanValue(rightValue, builder), "ortmp");
     }
 
     // check if the left and right expression have the same type

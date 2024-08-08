@@ -3,4 +3,13 @@ fn main() {
     y: i32* = &x;
     z: i32 = *y;
     printf("z: %d\n", z);
+    x = 30;
+    printf("x: %d, *y: %d\n", x, *y);
+    *y = 45;
+    printf("x: %d, *y: %d\n", x, *y);
 }
+
+// output:
+// z: 15
+// x: 30, *y: 30
+// x: 45, *y: 45

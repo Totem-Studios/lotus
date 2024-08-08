@@ -12,8 +12,9 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 
-#include "../generator/typeSystem.h"
 #include "../generator/scopeStack.h"
+#include "../generator/typeSystem.h"
+
 
 #include "../diagnostics/generator.h"
 
@@ -47,7 +48,7 @@ struct CodegenResult {
         struct {
             llvm::Value* value;
             typeSystem::Type type;
-            llvm::AllocaInst* pointer;
+            llvm::Value* pointer;
         } lValue;
         ParamCodegenResult param;
         llvm::Function* fn;
@@ -55,11 +56,13 @@ struct CodegenResult {
     CodegenResultType resultType;
 
     // create an rValue with a value and type only
-    CodegenResult(llvm::Value* value, const typeSystem::Type& type, CodegenResultType resultType)
+    CodegenResult(llvm::Value* value, const typeSystem::Type& type,
+                  CodegenResultType resultType)
         : rValue(value, type), resultType(resultType) {}
     // create an lValue with a value, type and a pointer
-    CodegenResult(llvm::Value* value, const typeSystem::Type& type, llvm::AllocaInst* pointer, CodegenResultType resultType)
-            : lValue(value, type, pointer), resultType(resultType) {}
+    CodegenResult(llvm::Value* value, const typeSystem::Type& type,
+                  llvm::Value* pointer, CodegenResultType resultType)
+        : lValue(value, type, pointer), resultType(resultType) {}
     CodegenResult(const ParamCodegenResult& param, CodegenResultType resultType)
         : param(param), resultType(resultType) {}
     CodegenResult(llvm::Function* fn, CodegenResultType resultType)
@@ -68,27 +71,30 @@ struct CodegenResult {
     ~CodegenResult() {}
 
     // is used to check if the codegen result contains any type of value
-    [[nodiscard]] inline bool isValueCodegenResultType() const {
+    [[nodiscard]] bool isValueCodegenResultType() const {
         return resultType == L_VALUE_CODEGEN_RESULT ||
-            resultType == R_VALUE_CODEGEN_RESULT;
+               resultType == R_VALUE_CODEGEN_RESULT;
     }
 
     // is used to get the llvm value of an lValue and rValue
     [[nodiscard]] llvm::Value* getValue() const {
-        if (resultType == R_VALUE_CODEGEN_RESULT) return rValue.value;
+        if (resultType == R_VALUE_CODEGEN_RESULT)
+            return rValue.value;
         return lValue.value;
     }
 
     // is used to get the string type, of an lValue and rValue
     [[nodiscard]] typeSystem::Type getType() const {
-        if (resultType == R_VALUE_CODEGEN_RESULT) return rValue.type;
+        if (resultType == R_VALUE_CODEGEN_RESULT)
+            return rValue.type;
         return lValue.type;
     }
 
     // used to get the pointer if it's an lValue
-    [[nodiscard]] llvm::AllocaInst* getPointer() const {
-        if (resultType == R_VALUE_CODEGEN_RESULT) return nullptr;
-        return lValue.pointer;
+    [[nodiscard]] llvm::Value* getPointer() const {
+        if (resultType == L_VALUE_CODEGEN_RESULT)
+            return lValue.pointer;
+        return nullptr;
     }
 };
 
@@ -127,7 +133,7 @@ class AST {
     void codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
-        // TODO: remove this hardcoded type for printf, and make it automatic
+        // TODO(anyone): remove this hardcoded type for printf
         scopes::setFunctionType("printf", typeSystem::Type{"i32"});
 
         // codegen each node the vector
@@ -366,11 +372,10 @@ class ASTAddressOfOperator : public ASTNode {
 
  public:
     explicit ASTAddressOfOperator(std::string identifier)
-            : identifier(std::move(identifier)) {}
+        : identifier(std::move(identifier)) {}
 
     void print(int depth) const override {
-        std::cout << std::string(depth * 2, ' ')
-                  << "Address Of Operator:\n";
+        std::cout << std::string(depth * 2, ' ') << "Address Of Operator:\n";
         std::cout << std::string((depth + 1) * 2, ' ')
                   << "Identifier: " << identifier << "\n";
     }
@@ -386,11 +391,10 @@ class ASTDereferenceOperator : public ASTNode {
 
  public:
     explicit ASTDereferenceOperator(ASTNode* expression)
-            : expression(expression) {}
+        : expression(expression) {}
 
     void print(int depth) const override {
-        std::cout << std::string(depth * 2, ' ')
-                  << "Dereference Operator:\n";
+        std::cout << std::string(depth * 2, ' ') << "Dereference Operator:\n";
         expression->print(depth + 1);
     }
 
@@ -623,26 +627,28 @@ class ASTVariableDeclaration : public ASTNode {
 };
 
 class ASTVariableAssignment : public ASTNode {
-    std::string identifier;
-    ASTNode* expression;
+    ASTNode* leftExpression;
+    ASTNode* rightExpression;
     std::string operation;
 
  public:
-    ASTVariableAssignment(std::string identifier, ASTNode* expression,
+    ASTVariableAssignment(ASTNode* leftExpression, ASTNode* rightExpression,
                           std::string operation)
-        : identifier(std::move(identifier)), expression(expression),
+        : leftExpression(leftExpression), rightExpression(rightExpression),
           operation(std::move(operation)) {}
-    ~ASTVariableAssignment() override { delete expression; }
+    ~ASTVariableAssignment() override {
+        delete leftExpression;
+        delete rightExpression;
+    }
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Variable Assignment:\n";
-        std::cout << std::string((depth + 1) * 2, ' ')
-                  << "Identifier: " << identifier << "\n";
+        leftExpression->print(depth + 1);
         if (!operation.empty()) {
             std::cout << std::string((depth + 1) * 2, ' ')
                       << "Operation: " << operation << "\n";
         }
-        expression->print(depth + 1);
+        rightExpression->print(depth + 1);
     }
 
     [[nodiscard]] std::unique_ptr<CodegenResult>

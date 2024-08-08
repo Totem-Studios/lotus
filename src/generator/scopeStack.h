@@ -22,22 +22,24 @@ namespace scopes {
 static llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* fn,
                                                 const std::string& variableName,
                                                 llvm::Type* type) {
-        llvm::IRBuilder<> temporaryBuilder(&fn->getEntryBlock(),
-                                           fn->getEntryBlock().begin());
-        return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
-    }
+    llvm::IRBuilder<> temporaryBuilder(&fn->getEntryBlock(),
+                                       fn->getEntryBlock().begin());
+    return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
+}
 
 // to store function types to use in for example function calls
 static std::map<std::string, typeSystem::Type> functionTypes;
 
 // helper function to get the type from a function
 static typeSystem::Type* getFunctionType(const std::string& identifier) {
-    if (functionTypes.contains(identifier)) return &functionTypes[identifier];
+    if (functionTypes.contains(identifier))
+        return &functionTypes[identifier];
     return nullptr;
 }
 
 // helper function to store the type for a function
-static void setFunctionType(const std::string& identifier, const typeSystem::Type& type) {
+static void setFunctionType(const std::string& identifier,
+                            const typeSystem::Type& type) {
     functionTypes[identifier] = type;
 }
 
@@ -63,23 +65,25 @@ static AllocationData* getAllocationData(const std::string& identifier) {
 }
 
 // helper function to set a variable in the scopeStack
-static void setAllocationData(const std::string& identifier, llvm::AllocaInst* allocaInst, const typeSystem::Type& type) {
+static void setAllocationData(const std::string& identifier,
+                              llvm::AllocaInst* allocaInst,
+                              const typeSystem::Type& type) {
     if (scopeStack.empty())
         scopeStack.emplace_back();
     scopeStack.back()[identifier] = {allocaInst, type};
 }
 
-inline void clearScopes() { scopeStack.clear(); }
+static void clearScopes() { scopeStack.clear(); }
 
-inline void startScope() { scopeStack.emplace_back(); }
+static void startScope() { scopeStack.emplace_back(); }
 
-inline void endScope() {
+static void endScope() {
     if (!scopeStack.empty()) {
         scopeStack.pop_back();
     }
 }
 
-inline bool existsInCurrentScope(const std::string& identifier) {
+static bool existsInCurrentScope(const std::string& identifier) {
     if (scopeStack.empty())
         return false;
     return scopeStack.back().find(identifier) != scopeStack.back().end();

@@ -22,34 +22,32 @@ struct LoopContext {
     llvm::BasicBlock* conditionalBlock;
     llvm::BasicBlock* mergeBlock;
 
-    [[nodiscard]] inline bool isForLoop() const {
-        return updateStatement != nullptr;
-    }
+    [[nodiscard]] bool isForLoop() const { return updateStatement != nullptr; }
 };
 
 // to keep track of information for the current loops, so that break and
 // continue statements can be generated correctly
 static std::vector<LoopContext> loopContexts;
 
-inline void startForLoop(ASTNode* updateStatement,
+static void startForLoop(ASTNode* updateStatement,
                          llvm::BasicBlock* conditionalBlock,
                          llvm::BasicBlock* mergeBlock) {
     // save loop information for potential continue and break
     loopContexts.emplace_back(updateStatement, conditionalBlock, mergeBlock);
 }
 
-inline void startWhileLoop(llvm::BasicBlock* conditionalBlock,
+static void startWhileLoop(llvm::BasicBlock* conditionalBlock,
                            llvm::BasicBlock* mergeBlock) {
     // save loop information for potential continue and break
     loopContexts.emplace_back(nullptr, conditionalBlock, mergeBlock);
 }
 
-inline void endLoop() {
+static void endLoop() {
     // restore the loop information for potential continue and break statements
     loopContexts.pop_back();
 }
 
-inline bool currentlyNotInsideLoop() { return loopContexts.empty(); }
+static bool currentlyNotInsideLoop() { return loopContexts.empty(); }
 
-inline LoopContext& getCurrentLoopContext() { return loopContexts.back(); }
+static LoopContext& getCurrentLoopContext() { return loopContexts.back(); }
 }  // namespace loopContext

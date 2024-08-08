@@ -82,7 +82,6 @@ or or|[|][|]
 ";" {return TOK_SEMICOLON;}
 ":" {return TOK_COLON;}
 "," {return TOK_COMMA;}
-"." {return TOK_DOT;}
 "&" {return TOK_AMPERSAND;}
 {type} {yylval.str = new StringWrapper(yytext); return TOK_TYPE;}
 {identifier} {yylval.str = new StringWrapper(yytext); return TOK_IDENTIFIER;}

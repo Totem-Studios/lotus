@@ -31,11 +31,11 @@ std::unique_ptr<AST> ast;
 
 %token<int_literal> TOK_INT_LITERAL
 %token<float_literal> TOK_FLOAT_LITERAL
-%token<str> TOK_IDENTIFIER TOK_TYPE TOK_STR_LITERAL TOK_F_STR_START TOK_F_STR_MIDDLE TOK_F_STR_END
+%token<str> TOK_IDENTIFIER TOK_TYPE TOK_STR_LITERAL
 %token<character> TOK_CHAR_LITERAL
-%token TOK_LET TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOT TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS TOK_INCREMENT TOK_DECREMENT TOK_PERCENT TOK_PLUS_EQUALS TOK_HYPHEN_EQUALS TOK_PERCENT_EQUALS TOK_ASTERISK_EQUALS TOK_F_SLASH_EQUALS TOK_BREAK TOK_CONTINUE TOK_AMPERSAND
+%token TOK_EQUALS TOK_SEMICOLON TOK_PLUS TOK_HYPHEN TOK_ASTERISK TOK_F_SLASH TOK_L_PAREN TOK_R_PAREN TOK_L_BRACE TOK_R_BRACE TOK_RETURN TOK_IF TOK_ELSE TOK_WHILE TOK_FOR TOK_FN TOK_COMMA TOK_ARROW TOK_COLON TOK_DOUBLE_EQUALS TOK_LESS_THAN TOK_GREATER_THAN TOK_LESS_THAN_EQUALS TOK_GREATER_THAN_EQUALS TOK_NOT_EQUALS TOK_TRUE TOK_FALSE TOK_NOT TOK_AND TOK_OR TOK_TILDA TOK_AS TOK_INCREMENT TOK_DECREMENT TOK_PERCENT TOK_PLUS_EQUALS TOK_HYPHEN_EQUALS TOK_PERCENT_EQUALS TOK_ASTERISK_EQUALS TOK_F_SLASH_EQUALS TOK_BREAK TOK_CONTINUE TOK_AMPERSAND
 
-%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall arithmeticExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3 variableDeclaration variableAssignment variableDefinition ifCompatibleStatement whileLoop forLoop factor2
+%type<node> expression instanceStatement localStatement compoundStatement functionDefinition functionPrototype parameter returnStatement functionCall arithmeticExpression term factor closedStatement openStatement booleanExpression booleanExpression2 booleanExpression3 variableDeclaration variableAssignment variableDefinition ifCompatibleStatement whileLoop forLoop factor2 factor3 lValue
 %type<nodeList> instanceStatementList localStatementList parameterList argumentList
 
 %start program
@@ -104,12 +104,12 @@ variableDeclaration
     ;
 
 variableAssignment
-    : TOK_IDENTIFIER TOK_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, ""); delete $1;}
-    | TOK_IDENTIFIER TOK_PLUS_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "+"); delete $1;}
-    | TOK_IDENTIFIER TOK_HYPHEN_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "-"); delete $1;}
-    | TOK_IDENTIFIER TOK_ASTERISK_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "*"); delete $1;}
-    | TOK_IDENTIFIER TOK_F_SLASH_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "/"); delete $1;}
-    | TOK_IDENTIFIER TOK_PERCENT_EQUALS expression {$$ = new ASTVariableAssignment($1->getString(), $3, "%"); delete $1;}
+    : lValue TOK_EQUALS expression {$$ = new ASTVariableAssignment($1, $3, "");}
+    | lValue TOK_PLUS_EQUALS expression {$$ = new ASTVariableAssignment($1, $3, "+");}
+    | lValue TOK_HYPHEN_EQUALS expression {$$ = new ASTVariableAssignment($1, $3, "-");}
+    | lValue TOK_ASTERISK_EQUALS expression {$$ = new ASTVariableAssignment($1, $3, "*");}
+    | lValue TOK_F_SLASH_EQUALS expression {$$ = new ASTVariableAssignment($1, $3, "/");}
+    | lValue TOK_PERCENT_EQUALS expression {$$ = new ASTVariableAssignment($1, $3, "%");}
     ;
 
 variableDefinition
@@ -203,27 +203,35 @@ term
 factor
     : TOK_HYPHEN factor {$$ = new ASTUnaryOperator($2, "-");} /* To handle cases like: (-5) * 2; and 3 * -2; */
     | TOK_PLUS factor {$$ = new ASTUnaryOperator($2, "+");}
-    | factor2
+    | factor2 {$$ = $1;}
     ;
 
 factor2
+    : factor2 TOK_AS TOK_TYPE {$$ = new ASTTypeCast($1, $3->getString()); delete $3;}
+    | factor2 TOK_TILDA TOK_TYPE {$$ = new ASTTypeCast($1, $3->getString()); delete $3;}
+    | factor3 {$$ = $1;}
+    ;
+
+factor3
     : TOK_INT_LITERAL {$$ = new ASTInteger($1);}
     | TOK_FLOAT_LITERAL {$$ = new ASTFloat($1);}
     | TOK_STR_LITERAL {$$ = new ASTString($1->getString()); delete $1;}
     | TOK_CHAR_LITERAL {$$ = new ASTChar($1);}
     | TOK_TRUE {$$ = new ASTBool(true);}
     | TOK_FALSE {$$ = new ASTBool(false);}
-    | TOK_IDENTIFIER {$$ = new ASTVariableExpression($1->getString()); delete $1;}
     | functionCall {$$ = $1;}
     | TOK_IDENTIFIER TOK_INCREMENT {$$ = new ASTIncrementDecrementOperator($1->getString(), "x++"); delete $1;}
     | TOK_IDENTIFIER TOK_DECREMENT {$$ = new ASTIncrementDecrementOperator($1->getString(), "x--"); delete $1;}
     | TOK_INCREMENT TOK_IDENTIFIER {$$ = new ASTIncrementDecrementOperator($2->getString(), "++x"); delete $2;}
     | TOK_DECREMENT TOK_IDENTIFIER {$$ = new ASTIncrementDecrementOperator($2->getString(), "--x"); delete $2;}
     | TOK_AMPERSAND TOK_IDENTIFIER {$$ = new ASTAddressOfOperator($2->getString()); delete $2;}
-    | TOK_ASTERISK expression {$$ = new ASTDereferenceOperator($2);}
-    | factor2 TOK_AS TOK_TYPE {$$ = new ASTTypeCast($1, $3->getString()); delete $3;}
-    | factor2 TOK_TILDA TOK_TYPE {$$ = new ASTTypeCast($1, $3->getString()); delete $3;}
     | TOK_L_PAREN expression TOK_R_PAREN {$$ = $2;}
+    | lValue {$$ = $1;}
+    ;
+
+lValue
+    : TOK_ASTERISK factor3 {$$ = new ASTDereferenceOperator($2);}
+    | TOK_IDENTIFIER {$$ = new ASTVariableExpression($1->getString()); delete $1;}
     ;
 %%
 

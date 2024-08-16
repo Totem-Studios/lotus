@@ -1,12 +1,5 @@
 fn main() {
-    x: i32 = 15;
-    y: i32* = &x;
-    z: i32 = *y;
-    printf("z: %d\n", z);
-    x = 30;
-    printf("x: %d, *y: %d\n", x, *y);
-    *y = 45;
-    printf("x: %d, *y: %d\n", x, *y);
+
 }
 
 // output:

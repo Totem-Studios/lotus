@@ -19,7 +19,7 @@
 #include "../diagnostics/generator.h"
 
 enum CodegenResultType {
-    // values that store a type, value and allocaInst (pointer)
+    // values that store a type, value and pointer (usually allocaInst)
     L_VALUE_CODEGEN_RESULT,
     // values that just store a type and value
     R_VALUE_CODEGEN_RESULT,
@@ -134,7 +134,7 @@ class AST {
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
         // TODO(anyone): remove this hardcoded type for printf
-        scopes::setFunctionType("printf", typeSystem::Type{"i32"});
+        scopes::setFunctionData("printf", typeSystem::Type{"i32"}, {typeSystem::Type{"char*"}}, true);
 
         // codegen each node the vector
         for (ASTNode* node : rootNodes) {

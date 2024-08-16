@@ -27,20 +27,39 @@ static llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* fn,
     return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
 }
 
+struct FunctionData {
+    typeSystem::Type returnType;
+    std::vector<typeSystem::Type> parameterTypes;
+    bool isVarArg{};
+};
+
 // to store function types to use in for example function calls
-static std::map<std::string, typeSystem::Type> functionTypes;
+static std::map<std::string, FunctionData> functionTypes;
 
 // helper function to get the type from a function
-static typeSystem::Type* getFunctionType(const std::string& identifier) {
+static FunctionData* getFunctionData(const std::string& identifier) {
     if (functionTypes.contains(identifier))
         return &functionTypes[identifier];
     return nullptr;
 }
 
 // helper function to store the type for a function
-static void setFunctionType(const std::string& identifier,
-                            const typeSystem::Type& type) {
-    functionTypes[identifier] = type;
+static void setFunctionData(const std::string& identifier,
+                            const typeSystem::Type& returnType, const std::vector<typeSystem::Type>& parameterTypes, bool isVarArg = false) {
+    functionTypes[identifier] = {returnType, parameterTypes, isVarArg};
+}
+
+// to store the current function use in for example return statements
+static std::string currentFunction;
+
+// helper function to get the current function
+static std::string getCurrentFunction() {
+    return currentFunction;
+}
+
+// helper function to set the current function
+static void setCurrentFunction(const std::string& function) {
+    currentFunction = function;
 }
 
 struct AllocationData {

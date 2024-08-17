@@ -23,7 +23,7 @@ uint64_t parseInt(const char *str) {
 %option yylineno
 
 /* Regex */
-type bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|auto|str
+type (bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|auto|str)[*]*
 identifier [A-Za-z_]+[0-9]*
 character ['][^'][']
 /* a string but with single quotes (to handle errors) */
@@ -82,7 +82,7 @@ or or|[|][|]
 ";" {return TOK_SEMICOLON;}
 ":" {return TOK_COLON;}
 "," {return TOK_COMMA;}
-"." {return TOK_DOT;}
+"&" {return TOK_AMPERSAND;}
 {type} {yylval.str = new StringWrapper(yytext); return TOK_TYPE;}
 {identifier} {yylval.str = new StringWrapper(yytext); return TOK_IDENTIFIER;}
 {integer_literal} {yylval.int_literal = parseInt(yytext); return TOK_INT_LITERAL;}

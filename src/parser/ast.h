@@ -12,10 +12,17 @@
 #include "llvm/IR/Module.h"
 #include "llvm/IR/Verifier.h"
 
+#include "../generator/scopeStack.h"
+#include "../generator/typeSystem.h"
+
+
 #include "../diagnostics/generator.h"
 
 enum CodegenResultType {
-    VALUE_CODEGEN_RESULT,
+    // values that store a type, value and allocaInst (pointer)
+    L_VALUE_CODEGEN_RESULT,
+    // values that just store a type and value
+    R_VALUE_CODEGEN_RESULT,
     PARAM_CODEGEN_RESULT,
     FUNCTION_CODEGEN_RESULT
 };
@@ -23,9 +30,9 @@ enum CodegenResultType {
 // type to store parameter result in CodegenResult, since it has two fields
 struct ParamCodegenResult {
     std::string identifier;
-    llvm::Type* type;
+    typeSystem::Type type;
 
-    ParamCodegenResult(std::string identifier, llvm::Type* type)
+    ParamCodegenResult(std::string identifier, const typeSystem::Type& type)
         : identifier(std::move(identifier)), type(type) {}
     ~ParamCodegenResult() = default;
 };
@@ -34,20 +41,61 @@ struct ParamCodegenResult {
 // to handle multiple return types like llvm::Value* and llvm::Function
 struct CodegenResult {
     union {
-        llvm::Value* value;
+        struct {
+            llvm::Value* value;
+            typeSystem::Type type;
+        } rValue;
+        struct {
+            llvm::Value* value;
+            typeSystem::Type type;
+            llvm::Value* pointer;
+        } lValue;
         ParamCodegenResult param;
         llvm::Function* fn;
     };
     CodegenResultType resultType;
 
-    CodegenResult(llvm::Value* value, CodegenResultType resultType)
-        : value(value), resultType(resultType) {}
+    // create an rValue with a value and type only
+    CodegenResult(llvm::Value* value, const typeSystem::Type& type,
+                  CodegenResultType resultType)
+        : rValue(value, type), resultType(resultType) {}
+    // create an lValue with a value, type and a pointer
+    CodegenResult(llvm::Value* value, const typeSystem::Type& type,
+                  llvm::Value* pointer, CodegenResultType resultType)
+        : lValue(value, type, pointer), resultType(resultType) {}
     CodegenResult(const ParamCodegenResult& param, CodegenResultType resultType)
         : param(param), resultType(resultType) {}
     CodegenResult(llvm::Function* fn, CodegenResultType resultType)
         : fn(fn), resultType(resultType) {}
 
     ~CodegenResult() {}
+
+    // is used to check if the codegen result contains any type of value
+    [[nodiscard]] bool isValueCodegenResultType() const {
+        return resultType == L_VALUE_CODEGEN_RESULT ||
+               resultType == R_VALUE_CODEGEN_RESULT;
+    }
+
+    // is used to get the llvm value of an lValue and rValue
+    [[nodiscard]] llvm::Value* getValue() const {
+        if (resultType == R_VALUE_CODEGEN_RESULT)
+            return rValue.value;
+        return lValue.value;
+    }
+
+    // is used to get the string type, of an lValue and rValue
+    [[nodiscard]] typeSystem::Type getType() const {
+        if (resultType == R_VALUE_CODEGEN_RESULT)
+            return rValue.type;
+        return lValue.type;
+    }
+
+    // used to get the pointer if it's an lValue
+    [[nodiscard]] llvm::Value* getPointer() const {
+        if (resultType == L_VALUE_CODEGEN_RESULT)
+            return lValue.pointer;
+        return nullptr;
+    }
 };
 
 class ASTNode {
@@ -85,6 +133,9 @@ class AST {
     void codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
+        // TODO(anyone): remove this hardcoded type for printf
+        scopes::setFunctionType("printf", typeSystem::Type{"i32"});
+
         // codegen each node the vector
         for (ASTNode* node : rootNodes) {
             // no need to use the return value, for they are top level nodes...
@@ -316,6 +367,43 @@ class ASTIncrementDecrementOperator : public ASTNode {
             const std::unique_ptr<llvm::Module>& moduleLLVM) const override;
 };
 
+class ASTAddressOfOperator : public ASTNode {
+    std::string identifier;
+
+ public:
+    explicit ASTAddressOfOperator(std::string identifier)
+        : identifier(std::move(identifier)) {}
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Address Of Operator:\n";
+        std::cout << std::string((depth + 1) * 2, ' ')
+                  << "Identifier: " << identifier << "\n";
+    }
+
+    [[nodiscard]] std::unique_ptr<CodegenResult>
+    codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
+            const std::unique_ptr<llvm::IRBuilder<>>& builder,
+            const std::unique_ptr<llvm::Module>& moduleLLVM) const override;
+};
+
+class ASTDereferenceOperator : public ASTNode {
+    ASTNode* expression;
+
+ public:
+    explicit ASTDereferenceOperator(ASTNode* expression)
+        : expression(expression) {}
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Dereference Operator:\n";
+        expression->print(depth + 1);
+    }
+
+    [[nodiscard]] std::unique_ptr<CodegenResult>
+    codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
+            const std::unique_ptr<llvm::IRBuilder<>>& builder,
+            const std::unique_ptr<llvm::Module>& moduleLLVM) const override;
+};
+
 class ASTParameter : public ASTNode {
     std::string identifier;
     std::string type;
@@ -539,26 +627,28 @@ class ASTVariableDeclaration : public ASTNode {
 };
 
 class ASTVariableAssignment : public ASTNode {
-    std::string identifier;
-    ASTNode* expression;
+    ASTNode* leftExpression;
+    ASTNode* rightExpression;
     std::string operation;
 
  public:
-    ASTVariableAssignment(std::string identifier, ASTNode* expression,
+    ASTVariableAssignment(ASTNode* leftExpression, ASTNode* rightExpression,
                           std::string operation)
-        : identifier(std::move(identifier)), expression(expression),
+        : leftExpression(leftExpression), rightExpression(rightExpression),
           operation(std::move(operation)) {}
-    ~ASTVariableAssignment() override { delete expression; }
+    ~ASTVariableAssignment() override {
+        delete leftExpression;
+        delete rightExpression;
+    }
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Variable Assignment:\n";
-        std::cout << std::string((depth + 1) * 2, ' ')
-                  << "Identifier: " << identifier << "\n";
+        leftExpression->print(depth + 1);
         if (!operation.empty()) {
             std::cout << std::string((depth + 1) * 2, ' ')
                       << "Operation: " << operation << "\n";
         }
-        expression->print(depth + 1);
+        rightExpression->print(depth + 1);
     }
 
     [[nodiscard]] std::unique_ptr<CodegenResult>

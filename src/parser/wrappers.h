@@ -26,9 +26,7 @@ struct VectorWrapper {
 
     void push(ASTNode* node) const { vector->push_back(node); }
 
-    [[nodiscard]] inline std::vector<ASTNode*>& getVector() const {
-        return *vector;
-    }
+    [[nodiscard]] std::vector<ASTNode*>& getVector() const { return *vector; }
 };
 
 static std::string* replaceEscape(const std::string& string) {
@@ -62,5 +60,5 @@ struct StringWrapper {
 
     ~StringWrapper() { delete string; }
 
-    [[nodiscard]] inline std::string& getString() const { return *string; }
+    [[nodiscard]] std::string& getString() const { return *string; }
 };

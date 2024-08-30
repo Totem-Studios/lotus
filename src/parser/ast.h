@@ -15,7 +15,6 @@
 #include "../generator/scopeStack.h"
 #include "../generator/typeSystem.h"
 
-
 #include "../diagnostics/generator.h"
 
 enum CodegenResultType {
@@ -31,9 +30,11 @@ enum CodegenResultType {
 struct ParamCodegenResult {
     std::string identifier;
     typeSystem::Type type;
+    bool isMutable;
 
-    ParamCodegenResult(std::string identifier, const typeSystem::Type& type)
-        : identifier(std::move(identifier)), type(type) {}
+    ParamCodegenResult(std::string identifier, const typeSystem::Type& type,
+                       bool isMutable)
+        : identifier(std::move(identifier)), type(type), isMutable(isMutable) {}
     ~ParamCodegenResult() = default;
 };
 
@@ -49,6 +50,7 @@ struct CodegenResult {
             llvm::Value* value;
             typeSystem::Type type;
             llvm::Value* pointer;
+            bool isMutable;
         } lValue;
         ParamCodegenResult param;
         llvm::Function* fn;
@@ -59,10 +61,11 @@ struct CodegenResult {
     CodegenResult(llvm::Value* value, const typeSystem::Type& type,
                   CodegenResultType resultType)
         : rValue(value, type), resultType(resultType) {}
-    // create an lValue with a value, type and a pointer
+    // create an lValue with a value, type, pointer and isMutable
     CodegenResult(llvm::Value* value, const typeSystem::Type& type,
-                  llvm::Value* pointer, CodegenResultType resultType)
-        : lValue(value, type, pointer), resultType(resultType) {}
+                  llvm::Value* pointer, bool isMutable,
+                  CodegenResultType resultType)
+        : lValue(value, type, pointer, isMutable), resultType(resultType) {}
     CodegenResult(const ParamCodegenResult& param, CodegenResultType resultType)
         : param(param), resultType(resultType) {}
     CodegenResult(llvm::Function* fn, CodegenResultType resultType)
@@ -76,25 +79,33 @@ struct CodegenResult {
                resultType == R_VALUE_CODEGEN_RESULT;
     }
 
-    // is used to get the llvm value of an lValue and rValue
+    // is used to get the llvm::Value of an lValue and rValue
     [[nodiscard]] llvm::Value* getValue() const {
         if (resultType == R_VALUE_CODEGEN_RESULT)
             return rValue.value;
         return lValue.value;
     }
 
-    // is used to get the string type, of an lValue and rValue
+    // is used to get the typeSystem::Type, of an lValue and rValue
     [[nodiscard]] typeSystem::Type getType() const {
         if (resultType == R_VALUE_CODEGEN_RESULT)
             return rValue.type;
         return lValue.type;
     }
 
-    // used to get the pointer if it's an lValue
+    // is used to get the pointer if it's an lValue
     [[nodiscard]] llvm::Value* getPointer() const {
         if (resultType == L_VALUE_CODEGEN_RESULT)
             return lValue.pointer;
         return nullptr;
+    }
+
+    // is used to check if it is mutable or not
+    [[nodiscard]] bool isMutable() const {
+        if (resultType == L_VALUE_CODEGEN_RESULT)
+            return lValue.isMutable;
+        // just return false as a default value
+        return false;
     }
 };
 
@@ -134,7 +145,9 @@ class AST {
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
         // TODO(anyone): remove this hardcoded type for printf
-        scopes::setFunctionData("printf", typeSystem::Type{"i32"}, {typeSystem::Type{"char*"}}, true);
+        scopes::setFunctionData(
+            "printf", typeSystem::Type{"i32"},
+            {typeSystem::Type{"char"}.createPointerType(false)}, true);
 
         // codegen each node the vector
         for (ASTNode* node : rootNodes) {
@@ -369,13 +382,16 @@ class ASTIncrementDecrementOperator : public ASTNode {
 
 class ASTAddressOfOperator : public ASTNode {
     std::string identifier;
+    bool isMutable;
 
  public:
-    explicit ASTAddressOfOperator(std::string identifier)
-        : identifier(std::move(identifier)) {}
+    explicit ASTAddressOfOperator(std::string identifier, bool isMutable)
+        : identifier(std::move(identifier)), isMutable(isMutable) {}
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Address Of Operator:\n";
+        std::cout << std::string((depth + 1) * 2, ' ')
+                  << "Is Mutable: " << isMutable << "\n";
         std::cout << std::string((depth + 1) * 2, ' ')
                   << "Identifier: " << identifier << "\n";
     }
@@ -407,13 +423,17 @@ class ASTDereferenceOperator : public ASTNode {
 class ASTParameter : public ASTNode {
     std::string identifier;
     std::string type;
+    bool isMutable;
 
  public:
-    ASTParameter(std::string identifier, std::string type)
-        : identifier(std::move(identifier)), type(std::move(type)) {}
+    ASTParameter(std::string identifier, std::string type, bool isMutable)
+        : identifier(std::move(identifier)), type(std::move(type)),
+          isMutable(isMutable) {}
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Parameter:\n";
+        std::cout << std::string((depth + 1) * 2, ' ')
+                  << "Is Mutable: " << isMutable << "\n";
         std::cout << std::string((depth + 1) * 2, ' ')
                   << "Identifier: " << identifier << "\n";
         std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << type
@@ -607,15 +627,20 @@ class ASTBreakStatement : public ASTNode {
 class ASTVariableDeclaration : public ASTNode {
     std::string identifier;
     std::string type;
+    bool isMutable;
 
  public:
-    ASTVariableDeclaration(std::string identifier, std::string type)
-        : identifier(std::move(identifier)), type(std::move(type)) {}
+    ASTVariableDeclaration(std::string identifier, std::string type,
+                           bool isMutable = false)
+        : identifier(std::move(identifier)), type(std::move(type)),
+          isMutable(isMutable) {}
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Variable Declaration:\n";
         std::cout << std::string((depth + 1) * 2, ' ')
                   << "Identifier: " << identifier << "\n";
+        std::cout << std::string((depth + 1) * 2, ' ')
+                  << "Mutable: " << isMutable << "\n";
         std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << type
                   << "\n";
     }
@@ -661,19 +686,22 @@ class ASTVariableDefinition : public ASTNode {
     std::string identifier;
     std::string type;
     ASTNode* expression;
+    bool isMutable;
 
  public:
     ASTVariableDefinition(std::string identifier, std::string type,
-                          ASTNode* expression)
+                          ASTNode* expression, bool isMutable = false)
         : identifier(std::move(identifier)), type(std::move(type)),
-          expression(expression) {}
+          expression(expression), isMutable(isMutable) {}
     ~ASTVariableDefinition() override { delete expression; }
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Variable Definition:\n";
         std::cout << std::string((depth + 1) * 2, ' ')
                   << "Identifier: " << identifier << "\n";
-        std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << identifier
+        std::cout << std::string((depth + 1) * 2, ' ')
+                  << "Mutable: " << isMutable << "\n";
+        std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << type
                   << "\n";
         expression->print(depth + 1);
     }

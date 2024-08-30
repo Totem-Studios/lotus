@@ -1,7 +1,7 @@
 fn main() {
-    i: i32 = 0;
+    mut i: i32 = 0;
     while i < 5 {
-        for j := 0; j < 5; j++ {
+        for mut j := 0; j < 5; j++ {
             if j == 3 {
                 printf("continue, i: %d, j: %d\n", i, j);
                 continue;  // Skip the rest of the inner loop when j is 3

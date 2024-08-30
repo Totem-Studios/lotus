@@ -45,26 +45,33 @@ static FunctionData* getFunctionData(const std::string& identifier) {
 
 // helper function to store the type for a function
 static void setFunctionData(const std::string& identifier,
-                            const typeSystem::Type& returnType, const std::vector<typeSystem::Type>& parameterTypes, bool isVarArg = false) {
+                            const typeSystem::Type& returnType,
+                            const std::vector<typeSystem::Type>& parameterTypes,
+                            bool isVarArg = false) {
     functionTypes[identifier] = {returnType, parameterTypes, isVarArg};
 }
 
-// to store the current function use in for example return statements
-static std::string currentFunction;
+// helper class to get and set the current function (as a string)
+class CurrentFunction {
+ private:
+    std::string currentFunction;
+    static CurrentFunction& instance() {
+        static CurrentFunction instance;
+        return instance;
+    }
+    CurrentFunction() = default;
 
-// helper function to get the current function
-static std::string getCurrentFunction() {
-    return currentFunction;
-}
-
-// helper function to set the current function
-static void setCurrentFunction(const std::string& function) {
-    currentFunction = function;
-}
+ public:
+    static const std::string& get() { return instance().currentFunction; }
+    static void set(const std::string& function) {
+        instance().currentFunction = function;
+    }
+};
 
 struct AllocationData {
     llvm::AllocaInst* allocaInst{};
     typeSystem::Type type;
+    bool isMutable{};
 };
 
 // to keep track of the variables that are available in the current
@@ -86,10 +93,10 @@ static AllocationData* getAllocationData(const std::string& identifier) {
 // helper function to set a variable in the scopeStack
 static void setAllocationData(const std::string& identifier,
                               llvm::AllocaInst* allocaInst,
-                              const typeSystem::Type& type) {
+                              const typeSystem::Type& type, bool isMutable) {
     if (scopeStack.empty())
         scopeStack.emplace_back();
-    scopeStack.back()[identifier] = {allocaInst, type};
+    scopeStack.back()[identifier] = {allocaInst, type, isMutable};
 }
 
 static void clearScopes() { scopeStack.clear(); }

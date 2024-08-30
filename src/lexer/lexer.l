@@ -23,20 +23,20 @@ uint64_t parseInt(const char *str) {
 %option yylineno
 
 /* Regex */
-type (bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|auto|str)[*]*
+type (?:\*|\*mut[ ])*(?:bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|str)|auto
 identifier [A-Za-z_]+[0-9]*
-character ['][^'][']
+character '[^']'
 /* a string but with single quotes (to handle errors) */
-invalid_character ['][^']{2,}[']
-empty_character ['][']
+invalid_character '[^']{2,}'
+empty_character ''
 integer_literal [0-9]+
 float_literal [0-9]*\.[0-9]+
-string ["][^"]*["]
-multi_line_comment [/][*](\n|.)*[*][/]
-one_line_comment ([/][/]).*
-not not|[!]
-and and|[&][&]
-or or|[|][|]
+string \"[^"]*\"
+multi_line_comment \/\*(\n|.)*?\*\/
+one_line_comment \/\/.*
+not not|!
+and and|&&
+or or|\|\|
 
 /* Rules */
 %%
@@ -48,6 +48,7 @@ or or|[|][|]
 "fn" {return TOK_FN;}
 "continue" {return TOK_CONTINUE;}
 "break" {return TOK_BREAK;}
+"mut" {return TOK_MUT;}
 "true" {return TOK_TRUE;}
 "false" {return TOK_FALSE;}
 {not} {return TOK_NOT;}

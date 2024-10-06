@@ -4,7 +4,9 @@
 
 #include <map>
 #include <ranges>
+#include <regex>
 #include <vector>
+
 
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
@@ -36,13 +38,21 @@ struct Type {
     [[nodiscard]] std::string toString() const { return type; }
     [[nodiscard]] llvm::Type*
     toLLVMType(const std::unique_ptr<llvm::IRBuilder<>>& builder) const {
+        // if the type is an array, then recursively get the array type until
+        // it is not an array anymore
+        if (isArrayType()) {
+            // get the type within the array (element type)
+            return llvm::ArrayType::get(
+                getArrayElementType().toLLVMType(builder), getArraySize());
+        }
+
         // if the type is a pointer, then recursively get the pointer type until
         // it is not a pointer anymore
         if (isPointerType()) {
             // get the pointer type of the type when removing the asterisk (the
             // element type)
-            return llvm::PointerType::get(getElementType().toLLVMType(builder),
-                                          0);
+            return llvm::PointerType::get(
+                getPointerElementType().toLLVMType(builder), 0);
         }
 
         if (type == "bool")
@@ -70,6 +80,10 @@ struct Type {
     [[nodiscard]] bool isPointerType() const {
         return type.starts_with('*') || type.starts_with("*mut ");
     }
+    [[nodiscard]] bool isArrayType() const {
+        // if it is surrounded with brackets "[ ]"
+        return type[0] == '[' && type[type.length() - 1] == ']';
+    }
     [[nodiscard]] bool isMutablePointerType() const {
         return type.starts_with("*mut ");
     }
@@ -90,11 +104,26 @@ struct Type {
         else
             return Type{"*" + type};
     }
-    [[nodiscard]] Type getElementType() const {
+    [[nodiscard]] Type createArrayType(uint64_t arraySize) const {
+        return Type{"[" + type + "|" + std::to_string(arraySize) + "]"};
+    }
+    [[nodiscard]] Type getPointerElementType() const {
         if (isMutablePointerType())
-            return Type{type.substr(5, type.length())};
+            // replace the "*mut "
+            return Type{type.substr(5)};
         else
-            return Type{type.substr(1, type.length())};
+            // replace the "*"
+            return Type{type.substr(1)};
+    }
+    [[nodiscard]] Type getArrayElementType() const {
+        // replace the first "[" and the "|integer]" sequence at the end
+        return Type{std::regex_replace(type.substr(1),
+                                       std::regex("\\|[0-9]+\\]$"), "")};
+    }
+    [[nodiscard]] uint64_t getArraySize() const {
+        // replace everything up to the last number and then remove the last "]"
+        return std::stoull(
+            std::regex_replace(type, std::regex("\\[.+\\|([0-9]+)\\]$"), "$1"));
     }
 };
 
@@ -135,202 +164,5 @@ getIntegerValue(uint64_t number,
             "The integer is to large to be represented as an integer");
         return nullptr;
     }
-}
-
-// helper function to create a llvm cast instruction
-static llvm::Value*
-createCast(llvm::Value* value, const Type& sourceType,
-           const Type& destinationType,
-           const std::unique_ptr<llvm::IRBuilder<>>& builder) {
-    if (sourceType == destinationType) {
-        // no cast needed
-        return value;
-    }
-
-    llvm::Type* llvmDestinationType = destinationType.toLLVMType(builder);
-
-    // if the source type is bool
-    if (sourceType.isBooleanType()) {
-        if (destinationType.isIntegerType()) {
-            return builder->CreateCast(llvm::Instruction::ZExt, value,
-                                       llvmDestinationType, "tmpcast");
-        } else if (destinationType.isFloatingPointType()) {
-            return builder->CreateCast(llvm::Instruction::UIToFP, value,
-                                       llvmDestinationType, "tmpcast");
-        }
-    }
-
-    // if the destination type is bool, then check if the value does not equal 0
-    if (destinationType.isBooleanType()) {
-        if (sourceType.isIntegerType()) {
-            return builder->CreateICmpNE(
-                value, llvm::ConstantInt::get(value->getType(), 0),
-                "cmptozero");
-        } else if (sourceType.isFloatingPointType()) {
-            return builder->CreateFCmpONE(
-                value, llvm::ConstantFP::get(value->getType(), 0), "cmptozero");
-        }
-    }
-
-    // if the source type and destination type is an integer or floating point
-    if ((sourceType.isIntegerType() || sourceType.isFloatingPointType()) &&
-        (destinationType.isIntegerType() ||
-         destinationType.isFloatingPointType())) {
-        llvm::CastInst::CastOps castOperation = llvm::CastInst::getCastOpcode(
-            value, true, llvmDestinationType, true);
-        return builder->CreateCast(castOperation, value, llvmDestinationType,
-                                   "tmpcast");
-    }
-
-    // throw error, cast is not supported
-    generator::fatal_error(std::chrono::high_resolution_clock::now(),
-                           "Invalid cast",
-                           "Cannot cast from '" + sourceType.toString() +
-                               "' to '" + destinationType.toString() + "'");
-    return nullptr;
-}
-
-// helper function for getting the boolean representation of a llvm::Value*
-static llvm::Value*
-getBooleanValue(llvm::Value* value, const Type& sourceType,
-                const std::unique_ptr<llvm::IRBuilder<>>& builder) {
-    return createCast(value, sourceType, Type{"bool"}, builder);
-}
-
-// helper function to create binary operations
-static std::tuple<llvm::Value*, Type>
-createBinaryOperation(llvm::Value* leftValue, llvm::Value* rightValue,
-                      const Type& leftType, const Type& rightType,
-                      const std::string& operation,
-                      const std::unique_ptr<llvm::IRBuilder<>>& builder) {
-    // these can be performed with different types because both sides are cast
-    // to booleans
-    if (operation == "&&") {
-        return {builder->CreateAnd(
-                    getBooleanValue(leftValue, leftType, builder),
-                    getBooleanValue(rightValue, rightType, builder), "andtmp"),
-                Type{"bool"}};
-    } else if (operation == "||") {
-        return {builder->CreateOr(
-                    getBooleanValue(leftValue, leftType, builder),
-                    getBooleanValue(rightValue, rightType, builder), "ortmp"),
-                Type{"bool"}};
-    }
-
-    // check if the left and right expression have the same type
-    if (leftType != rightType) {
-        generator::fatal_error(std::chrono::high_resolution_clock::now(),
-                               "Type mismatch in binary operation",
-                               "Cannot perform the binary operation '" +
-                                   operation + "' with the types '" +
-                                   leftType.toString() + "' and '" +
-                                   rightType.toString() + "'");
-        return {};
-    }
-
-    bool isFloatingPointOperation = leftType.isFloatingPointType();
-    // if it is an integer that is not an i1 (boolean)
-    bool isIntegerOperation = leftType.isIntegerType();
-
-    llvm::Value* resultValue = nullptr;
-
-    // these operations can only be performed if the types are the same
-    if (operation == "+") {
-        if (isFloatingPointOperation) {
-            resultValue =
-                builder->CreateFAdd(leftValue, rightValue, "addfloattmp");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateAdd(leftValue, rightValue, "addtmp");
-        }
-    } else if (operation == "-") {
-        if (isFloatingPointOperation) {
-            resultValue =
-                builder->CreateFSub(leftValue, rightValue, "subfloattmp");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateSub(leftValue, rightValue, "subtmp");
-        }
-    } else if (operation == "*") {
-        if (isFloatingPointOperation) {
-            resultValue =
-                builder->CreateFMul(leftValue, rightValue, "mulfloattmp");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateMul(leftValue, rightValue, "multmp");
-        }
-    } else if (operation == "/") {
-        if (isFloatingPointOperation) {
-            resultValue =
-                builder->CreateFDiv(leftValue, rightValue, "divfloattmp");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateSDiv(leftValue, rightValue, "divtmp");
-        }
-    } else if (operation == "%") {
-        if (isFloatingPointOperation) {
-            resultValue =
-                builder->CreateFRem(leftValue, rightValue, "remfloattmp");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateSRem(leftValue, rightValue, "remtmp");
-        }
-    } else if (operation == "==") {
-        if (isFloatingPointOperation) {
-            resultValue = builder->CreateFCmpOEQ(leftValue, rightValue,
-                                                 "cmpfloattmpequals");
-        } else if (isIntegerOperation) {
-            resultValue =
-                builder->CreateICmpEQ(leftValue, rightValue, "cmptmpequals");
-        }
-    } else if (operation == "!=") {
-        if (isFloatingPointOperation) {
-            resultValue = builder->CreateFCmpONE(leftValue, rightValue,
-                                                 "cmpfloattmpnotequals");
-        } else if (isIntegerOperation) {
-            resultValue =
-                builder->CreateICmpNE(leftValue, rightValue, "cmptmpnotequals");
-        }
-    } else if (operation == "<") {
-        if (isFloatingPointOperation) {
-            resultValue = builder->CreateFCmpOLT(leftValue, rightValue,
-                                                 "cmpfloattmpless");
-        } else if (isIntegerOperation) {
-            resultValue =
-                builder->CreateICmpSLT(leftValue, rightValue, "cmptmpless");
-        }
-    } else if (operation == ">") {
-        if (isFloatingPointOperation) {
-            resultValue = builder->CreateFCmpOGT(leftValue, rightValue,
-                                                 "cmpfloattmpgreater");
-        } else if (isIntegerOperation) {
-            resultValue =
-                builder->CreateICmpSGT(leftValue, rightValue, "cmptmpgreater");
-        }
-    } else if (operation == "<=") {
-        if (isFloatingPointOperation) {
-            resultValue = builder->CreateFCmpOLE(leftValue, rightValue,
-                                                 "cmpfloattmplessequals");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateICmpSLE(leftValue, rightValue,
-                                                 "cmptmplessequals");
-        }
-    } else if (operation == ">=") {
-        if (isFloatingPointOperation) {
-            resultValue = builder->CreateFCmpOGE(leftValue, rightValue,
-                                                 "cmpfloattmpgreaterequals");
-        } else if (isIntegerOperation) {
-            resultValue = builder->CreateICmpSGE(leftValue, rightValue,
-                                                 "cmptmpgreaterequals");
-        }
-    }
-
-    // if no operators matched, then throw an error
-    if (resultValue == nullptr) {
-        generator::fatal_error(std::chrono::high_resolution_clock::now(),
-                               "Invalid binary operator",
-                               "The binary operator '" + operation +
-                                   "' is not supported with the type '" +
-                                   leftType.toString() + "'");
-        return {};
-    }
-    // return the result value together with the resulting type (the leftType
-    // and rightType are the same here)
-    return {resultValue, leftType};
 }
 }  // namespace typeSystem

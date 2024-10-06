@@ -15,7 +15,9 @@
 #include "llvm/IR/Verifier.h"
 
 #include "../parser/ast.h"
+#include "casting.h"
 #include "loopContext.h"
+
 
 #include "../diagnostics/generator.h"
 
@@ -36,7 +38,7 @@ std::unique_ptr<CodegenResult> ASTVariableExpression::codegen(
         builder->CreateLoad(allocationData->allocaInst->getAllocatedType(),
                             allocationData->allocaInst, identifier.c_str()),
         allocationData->type, allocationData->allocaInst,
-        allocationData->isMutable, L_VALUE_CODEGEN_RESULT);
+        allocationData->isMutable);
 }
 
 std::unique_ptr<CodegenResult>
@@ -45,7 +47,7 @@ ASTInteger::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                     const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
         typeSystem::getIntegerValue(number, builder),
-        typeSystem::getIntegerType(number, builder), R_VALUE_CODEGEN_RESULT);
+        typeSystem::getIntegerType(number, builder));
 }
 
 std::unique_ptr<CodegenResult>
@@ -53,8 +55,7 @@ ASTBool::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(builder->getInt1(value),
-                                           typeSystem::Type{"bool"},
-                                           R_VALUE_CODEGEN_RESULT);
+                                           typeSystem::Type{"bool"});
 }
 
 std::unique_ptr<CodegenResult>
@@ -63,7 +64,7 @@ ASTFloat::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                   const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
         llvm::ConstantFP::get(builder->getDoubleTy(), number),
-        typeSystem::Type{"f64"}, R_VALUE_CODEGEN_RESULT);
+        typeSystem::Type{"f64"});
 }
 
 std::unique_ptr<CodegenResult>
@@ -72,8 +73,7 @@ ASTString::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                    const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
         builder->CreateGlobalStringPtr(text, "strlit"),
-        typeSystem::Type{"char"}.createPointerType(false),
-        R_VALUE_CODEGEN_RESULT);
+        typeSystem::Type{"char"}.createPointerType(false));
 }
 
 std::unique_ptr<CodegenResult>
@@ -81,8 +81,7 @@ ASTChar::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                  const std::unique_ptr<llvm::IRBuilder<>>& builder,
                  const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(builder->getInt8(character),
-                                           typeSystem::Type{"char"},
-                                           R_VALUE_CODEGEN_RESULT);
+                                           typeSystem::Type{"char"});
 }
 
 std::unique_ptr<CodegenResult>
@@ -102,10 +101,10 @@ ASTTypeCast::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     }
 
     return std::make_unique<CodegenResult>(
-        typeSystem::createCast(expressionResult->getValue(),
-                               expressionResult->getType(),
-                               typeSystem::Type{type}, builder),
-        typeSystem::Type{type}, R_VALUE_CODEGEN_RESULT);
+        casting::createCast(expressionResult->getValue(),
+                            expressionResult->getType(), typeSystem::Type{type},
+                            builder),
+        typeSystem::Type{type});
 }
 
 // this could also be called a scope
@@ -155,11 +154,10 @@ std::unique_ptr<CodegenResult> ASTBinaryOperator::codegen(
         return nullptr;
     }
     // get the resulting value and type
-    auto [resultValue, resultType] = typeSystem::createBinaryOperation(
+    auto [resultValue, resultType] = casting::createBinaryOperation(
         leftResult->getValue(), rightResult->getValue(), leftResult->getType(),
         rightResult->getType(), operation, builder);
-    return std::make_unique<CodegenResult>(resultValue, resultType,
-                                           R_VALUE_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(resultValue, resultType);
 }
 
 std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
@@ -187,8 +185,8 @@ std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
     typeSystem::Type resultType = expressionResult->getType();
     if (operation == "!") {
         resultValue = builder->CreateNot(
-            typeSystem::getBooleanValue(expressionResult->getValue(),
-                                        expressionResult->getType(), builder),
+            casting::toBoolean(expressionResult->getValue(),
+                               expressionResult->getType(), builder),
             "nottmp");
         // the "!" operator casts the type to bool, so it's always a bool
         resultType = typeSystem::Type{"bool"};
@@ -215,8 +213,7 @@ std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
                 expressionResult->getType().toString() + "'");
         return nullptr;
     }
-    return std::make_unique<CodegenResult>(resultValue, resultType,
-                                           R_VALUE_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(resultValue, resultType);
 }
 
 std::unique_ptr<CodegenResult> ASTIncrementDecrementOperator::codegen(
@@ -317,8 +314,7 @@ std::unique_ptr<CodegenResult> ASTIncrementDecrementOperator::codegen(
                                    "' is not supported");
         return nullptr;
     }
-    return std::make_unique<CodegenResult>(resultValue, allocationData->type,
-                                           R_VALUE_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(resultValue, allocationData->type);
 }
 
 std::unique_ptr<CodegenResult> ASTAddressOfOperator::codegen(
@@ -337,8 +333,7 @@ std::unique_ptr<CodegenResult> ASTAddressOfOperator::codegen(
 
     return std::make_unique<CodegenResult>(
         allocationData->allocaInst,
-        allocationData->type.createPointerType(isMutable),
-        R_VALUE_CODEGEN_RESULT);
+        allocationData->type.createPointerType(isMutable));
 }
 
 std::unique_ptr<CodegenResult> ASTDereferenceOperator::codegen(
@@ -364,13 +359,76 @@ std::unique_ptr<CodegenResult> ASTDereferenceOperator::codegen(
         return nullptr;
     }
 
-    typeSystem::Type elementType = expressionResult->getType().getElementType();
+    typeSystem::Type elementType =
+        expressionResult->getType().getPointerElementType();
     return std::make_unique<CodegenResult>(
         builder->CreateLoad(elementType.toLLVMType(builder),
                             expressionResult->getValue(), "tmpderef"),
         elementType, expressionResult->getValue(),
-        expressionResult->getType().isMutablePointerType(),
-        L_VALUE_CODEGEN_RESULT);
+        expressionResult->getType().isMutablePointerType());
+}
+
+std::unique_ptr<CodegenResult>
+ASTArrayIndex::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
+                       const std::unique_ptr<llvm::IRBuilder<>>& builder,
+                       const std::unique_ptr<llvm::Module>& moduleLLVM) const {
+    std::unique_ptr<CodegenResult> arrayResult =
+        array->codegen(ctx, builder, moduleLLVM);
+    std::unique_ptr<CodegenResult> indexResult =
+        index->codegen(ctx, builder, moduleLLVM);
+
+    // check if the array result is valid
+    if (arrayResult == nullptr || !arrayResult->isValueCodegenResultType()) {
+        generator::fatal_error(std::chrono::high_resolution_clock::now(),
+                               "Invalid array expression",
+                               "The array expression in the array index "
+                               "operation has an invalid value");
+        return nullptr;
+    }
+
+    // check if the index result is valid
+    if (indexResult == nullptr || !indexResult->isValueCodegenResultType()) {
+        generator::fatal_error(std::chrono::high_resolution_clock::now(),
+                               "Invalid index expression",
+                               "The index expression in the array index "
+                               "operation has an invalid value");
+        return nullptr;
+    }
+
+    // check if the array is an array type
+    if (!arrayResult->getType().isArrayType()) {
+        generator::fatal_error(
+            std::chrono::high_resolution_clock::now(), "Invalid array index",
+            "Cannot perform array index operation on a non-array type");
+        return nullptr;
+    }
+
+    // check if the index is an integer type
+    if (!indexResult->getType().isIntegerType()) {
+        generator::fatal_error(std::chrono::high_resolution_clock::now(),
+                               "Invalid index expression",
+                               "Cannot perform array index operation because "
+                               "the index is not an integer");
+        return nullptr;
+    }
+
+    // check if the array is an lValue
+    if (arrayResult->resultType != L_VALUE_CODEGEN_RESULT) {
+        generator::fatal_error(
+            std::chrono::high_resolution_clock::now(), "Invalid array index",
+            "Cannot perform array index on an rValue (must be an lValue)");
+        return nullptr;
+    }
+
+    llvm::Value* elementPointer = builder->CreateGEP(
+        arrayResult->getType().toLLVMType(builder), arrayResult->getPointer(),
+        {builder->getInt32(0), indexResult->getValue()}, "tmpelementidx");
+    typeSystem::Type elementType = arrayResult->getType().getArrayElementType();
+
+    return std::make_unique<CodegenResult>(
+        builder->CreateLoad(elementType.toLLVMType(builder), elementPointer,
+                            "tmparrayload"),
+        elementType, elementPointer, arrayResult->isMutable());
 }
 
 std::unique_ptr<CodegenResult>
@@ -378,8 +436,7 @@ ASTParameter::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                       const std::unique_ptr<llvm::IRBuilder<>>& builder,
                       const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
-        ParamCodegenResult(identifier, typeSystem::Type{type}, isMutable),
-        PARAM_CODEGEN_RESULT);
+        ParamCodegenResult(identifier, typeSystem::Type{type}, isMutable));
 }
 
 std::unique_ptr<CodegenResult> ASTFunctionPrototype::codegen(
@@ -459,7 +516,7 @@ std::unique_ptr<CodegenResult> ASTFunctionPrototype::codegen(
         i++;
     }
 
-    return std::make_unique<CodegenResult>(fn, FUNCTION_CODEGEN_RESULT);
+    return std::make_unique<CodegenResult>(fn);
 }
 
 std::unique_ptr<CodegenResult> ASTFunctionDefinition::codegen(
@@ -546,7 +603,7 @@ ASTWhileLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition = typeSystem::getBooleanValue(
+    llvm::Value* condition = casting::toBoolean(
         expressionResult->getValue(), expressionResult->getType(), builder);
     // generate the condition
     builder->CreateCondBr(condition, loopBlock, mergeBlock);
@@ -610,7 +667,7 @@ ASTForLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition = typeSystem::getBooleanValue(
+    llvm::Value* condition = casting::toBoolean(
         expressionResult->getValue(), expressionResult->getType(), builder);
     // generate the condition
     builder->CreateCondBr(condition, loopBlock, mergeBlock);
@@ -769,6 +826,15 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
         return nullptr;
     }
 
+    // check if it's not an lValue
+    if (leftExpressionResult->resultType != L_VALUE_CODEGEN_RESULT) {
+        generator::fatal_error(
+            std::chrono::high_resolution_clock::now(),
+            "Invalid variable assignment",
+            "Cannot assign a value to an rValue (must be an lValue)");
+        return nullptr;
+    }
+
     if (!leftExpressionResult->isMutable()) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
@@ -779,11 +845,14 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
 
     // check if the types match
     if (leftExpressionResult->getType() != rightExpressionResult->getType()) {
-        generator::fatal_error(
-            std::chrono::high_resolution_clock::now(),
-            "Type mismatch in variable assignment",
-            "The type of the expression does not match the type of the left "
-            "hand side of the variable assignment");
+        generator::fatal_error(std::chrono::high_resolution_clock::now(),
+                               "Type mismatch in variable assignment",
+                               "The type of the expression '" +
+                                   rightExpressionResult->getType().toString() +
+                                   "' does not match the type of the left "
+                                   "hand side of the variable assignment '" +
+                                   leftExpressionResult->getType().toString() +
+                                   "'");
         return nullptr;
     }
 
@@ -795,19 +864,24 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
         resultType = rightExpressionResult->getType();
     } else {
         // get the resulting value and type
-        auto [resultValueTemp, resultTypeTemp] =
-            typeSystem::createBinaryOperation(leftExpressionResult->getValue(),
-                                              rightExpressionResult->getValue(),
-                                              leftExpressionResult->getType(),
-                                              rightExpressionResult->getType(),
-                                              operation, builder);
+        auto [resultValueTemp, resultTypeTemp] = casting::createBinaryOperation(
+            leftExpressionResult->getValue(), rightExpressionResult->getValue(),
+            leftExpressionResult->getType(), rightExpressionResult->getType(),
+            operation, builder);
         resultValue = resultValueTemp;
         resultType = resultTypeTemp;
     }
-    // store the value of the expression
+
     builder->CreateStore(resultValue, leftExpressionResult->getPointer());
-    return std::make_unique<CodegenResult>(resultValue, resultType,
-                                           R_VALUE_CODEGEN_RESULT);
+
+    // if the right expression result is an lValue then return an lValue
+    // otherwise return an rValue
+    if (rightExpressionResult->resultType == L_VALUE_CODEGEN_RESULT) {
+        return std::make_unique<CodegenResult>(
+            resultValue, resultType, rightExpressionResult->getPointer(),
+            rightExpressionResult->isMutable());
+    }
+    return std::make_unique<CodegenResult>(resultValue, resultType);
 }
 
 std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
@@ -841,9 +915,9 @@ std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
     // if the type is not auto, then cast from the expression type to the type
     llvm::Value* resultingValue =
         type == "auto" ? expressionResult->getValue()
-                       : typeSystem::createCast(expressionResult->getValue(),
-                                                expressionResult->getType(),
-                                                resultingType, builder);
+                       : casting::createCast(expressionResult->getValue(),
+                                             expressionResult->getType(),
+                                             resultingType, builder);
     // allocate space for the variable and store the value of the expression
     llvm::AllocaInst* allocaInst = scopes::createEntryBlockAlloca(
         builder->GetInsertBlock()->getParent(), identifier,
@@ -869,7 +943,7 @@ ASTIfStatement::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     }
 
     // get the boolean value of the expression
-    llvm::Value* condition = typeSystem::getBooleanValue(
+    llvm::Value* condition = casting::toBoolean(
         expressionResult->getValue(), expressionResult->getType(), builder);
 
     // create the branches
@@ -913,7 +987,7 @@ std::unique_ptr<CodegenResult> ASTIfElseStatement::codegen(
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition = typeSystem::getBooleanValue(
+    llvm::Value* condition = casting::toBoolean(
         expressionResult->getValue(), expressionResult->getType(), builder);
 
     // create the branches
@@ -1034,7 +1108,88 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
         return nullptr;
     }
 
+    llvm::Value* resultValue = builder->CreateCall(calleeFn, args, "calltmp");
+
+    // if it's an array type then create an extra allocation and return a lValue
+    if (functionData->returnType.isArrayType()) {
+        llvm::AllocaInst* allocaInst = scopes::createEntryBlockAlloca(
+            builder->GetInsertBlock()->getParent(), "tmparrayalloca",
+            functionData->returnType.toLLVMType(builder));
+        builder->CreateStore(resultValue, allocaInst);
+        return std::make_unique<CodegenResult>(
+            resultValue, functionData->returnType, allocaInst, false);
+    }
+
+    return std::make_unique<CodegenResult>(resultValue,
+                                           functionData->returnType);
+}
+
+std::unique_ptr<CodegenResult> ASTArrayInitList::codegen(
+    const std::unique_ptr<llvm::LLVMContext>& ctx,
+    const std::unique_ptr<llvm::IRBuilder<>>& builder,
+    const std::unique_ptr<llvm::Module>& moduleLLVM) const {
+    bool noExplicitType = type.empty();
+    uint64_t arraySize = elementList.size();
+
+    if (arraySize == 0) {
+        generator::fatal_error(
+            std::chrono::high_resolution_clock::now(),
+            "Invalid array initialization list",
+            "You cannot have an empty array initialization list");
+        return nullptr;
+    }
+
+    std::unique_ptr<CodegenResult> elementResults[arraySize];
+    for (uint64_t i = 0; i < arraySize; i++) {
+        elementResults[i] = elementList[i]->codegen(ctx, builder, moduleLLVM);
+    }
+
+    // find the resulting type for the elements of the array init list
+    typeSystem::Type resultingElementType =
+        noExplicitType ? elementResults[0]->getType() : typeSystem::Type{type};
+
+    // get the array type for the entire array init list
+    typeSystem::Type resultingArrayType =
+        resultingElementType.createArrayType(arraySize);
+
+    // if there is no explicit type, then check if all types are equal
+    if (noExplicitType) {
+        for (const auto& elementResult : elementResults) {
+            if (elementResult->getType() != resultingElementType) {
+                generator::fatal_error(
+                    std::chrono::high_resolution_clock::now(),
+                    "Type mismatch in array initialization list",
+                    "The type '" + elementResult->getType().toString() +
+                        "' does not equal the first type in the list '" +
+                        resultingElementType.toString() + "'");
+                return nullptr;
+            }
+        }
+    }
+
+    llvm::Value* resultingValues[arraySize];
+    for (uint64_t i = 0; i < arraySize; i++) {
+        // if there is an explicit type, then cast the values, otherwise don't
+        resultingValues[i] =
+            noExplicitType ? elementResults[i]->getValue()
+                           : casting::createCast(elementResults[i]->getValue(),
+                                                 elementResults[i]->getType(),
+                                                 resultingElementType, builder);
+    }
+
+    // allocate space for the array, and store the resultingValues
+    llvm::AllocaInst* allocaInst = scopes::createEntryBlockAlloca(
+        builder->GetInsertBlock()->getParent(), "tmparrayalloca",
+        resultingArrayType.toLLVMType(builder));
+    for (uint64_t i = 0; i < arraySize; i++) {
+        llvm::Value* elementPointer = builder->CreateInBoundsGEP(
+            resultingArrayType.toLLVMType(builder), allocaInst,
+            {builder->getInt32(0), builder->getInt64(i)}, "tmpelementidx");
+        builder->CreateStore(resultingValues[i], elementPointer);
+    }
+
     return std::make_unique<CodegenResult>(
-        builder->CreateCall(calleeFn, args, "calltmp"),
-        functionData->returnType, R_VALUE_CODEGEN_RESULT);
+        builder->CreateLoad(allocaInst->getAllocatedType(), allocaInst,
+                            "tmpload"),
+        resultingArrayType);
 }

@@ -1,27 +1,27 @@
-fn foo(mut x: i32, y: f64) {
-    x = 86;
-    // y = 5.34; -> gives error
-    printf("x: %d, y: %f\n", x, y);
+fn plotBooleanGrid(arr1: [bool|5], arr2: [bool|5]) {
+    for mut i := 0; i < 5; i++ {
+        for mut j := 0; j < 5; j++ {
+            if arr1[i] && arr2[j] {
+                printf("# ");
+            } else if !arr1[i] && !arr2[j] {
+                printf("  ");
+            } else {
+                printf("* ");
+            }
+        }
+        printf("\n");
+    }
 }
 
 fn main() {
-    x: i32 = 10;
-    // x = 5; -> gives error
-
-    mut y: i32 = 45;
-    y = 5;
-
-    a: *i32 = &x;
-    // *a = 5; -> gives error
-
-    b: *mut i32 = &mut y;
-    *b = 34;
-
-    printf("%d, %d\n", x, y);
-
-    foo(123, 345.4);
+    arr1: [bool|5] = bool[1, 0, 1, 1, 0];
+    arr2: [bool|5] = bool[0, 1, 0, 1, 1];
+    plotBooleanGrid(arr1, arr2);
 }
 
 // output:
-// 10, 34
-// x: 86, y: 345.400000
+// * # * # #
+//   *   * *
+// * # * # #
+// * # * # #
+//   *   * *

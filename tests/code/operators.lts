@@ -1,7 +1,7 @@
 fn main() {
-    x := 10;
+    mut x := 10;
     x += 5;
-    y := x--;
+    mut y := x--;
     y %= x;
     printf("%d, %d\n", x, y);
     x *= 3;

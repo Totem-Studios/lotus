@@ -36,7 +36,7 @@ std::unique_ptr<CodegenResult> ASTVariableExpression::codegen(
         builder->CreateLoad(allocationData->allocaInst->getAllocatedType(),
                             allocationData->allocaInst, identifier.c_str()),
         allocationData->type, allocationData->allocaInst,
-        L_VALUE_CODEGEN_RESULT);
+        allocationData->isMutable, L_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -72,7 +72,8 @@ ASTString::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                    const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
         builder->CreateGlobalStringPtr(text, "strlit"),
-        typeSystem::Type{"char"}.createPointerType(), R_VALUE_CODEGEN_RESULT);
+        typeSystem::Type{"char"}.createPointerType(false),
+        R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -102,8 +103,8 @@ ASTTypeCast::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
 
     return std::make_unique<CodegenResult>(
         typeSystem::createCast(expressionResult->getValue(),
-                               typeSystem::Type{type}.toLLVMType(builder),
-                               builder),
+                               expressionResult->getType(),
+                               typeSystem::Type{type}, builder),
         typeSystem::Type{type}, R_VALUE_CODEGEN_RESULT);
 }
 
@@ -153,13 +154,12 @@ std::unique_ptr<CodegenResult> ASTBinaryOperator::codegen(
                                    operation + "' has an invalid value");
         return nullptr;
     }
-    return std::make_unique<CodegenResult>(
-        typeSystem::createBinaryOperation(leftResult->getValue(),
-                                          rightResult->getValue(), operation,
-                                          builder),
-        typeSystem::getResultTypeFromBinaryOperation(
-            leftResult->getType(), rightResult->getType(), operation),
-        R_VALUE_CODEGEN_RESULT);
+    // get the resulting value and type
+    auto [resultValue, resultType] = typeSystem::createBinaryOperation(
+        leftResult->getValue(), rightResult->getValue(), leftResult->getType(),
+        rightResult->getType(), operation, builder);
+    return std::make_unique<CodegenResult>(resultValue, resultType,
+                                           R_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
@@ -179,16 +179,16 @@ std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
     }
 
     bool isFloatingPointOperation =
-        expressionResult->getValue()->getType()->isFloatingPointTy();
-    bool isIntegerOperation =
-        expressionResult->getValue()->getType()->isIntegerTy();
+        expressionResult->getType().isFloatingPointType();
+    bool isIntegerOperation = expressionResult->getType().isIntegerType();
 
     llvm::Value* resultValue = nullptr;
     // default to the type of the expression
     typeSystem::Type resultType = expressionResult->getType();
     if (operation == "!") {
         resultValue = builder->CreateNot(
-            typeSystem::getBooleanValue(expressionResult->getValue(), builder),
+            typeSystem::getBooleanValue(expressionResult->getValue(),
+                                        expressionResult->getType(), builder),
             "nottmp");
         // the "!" operator casts the type to bool, so it's always a bool
         resultType = typeSystem::Type{"bool"};
@@ -208,13 +208,11 @@ std::unique_ptr<CodegenResult> ASTUnaryOperator::codegen(
     }
     // check if the resultValue is a nullptr, then throw an error
     if (resultValue == nullptr) {
-        std::string stringType;
-        llvm::raw_string_ostream stream(stringType);
-        expressionResult->getValue()->getType()->print(stream);
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(), "Invalid unary operator",
             "The unary operator '" + operation +
-                "' is not supported with the type '" + stringType + "'");
+                "' is not supported with the type '" +
+                expressionResult->getType().toString() + "'");
         return nullptr;
     }
     return std::make_unique<CodegenResult>(resultValue, resultType,
@@ -235,14 +233,22 @@ std::unique_ptr<CodegenResult> ASTIncrementDecrementOperator::codegen(
         return nullptr;
     }
 
+    if (!allocationData->isMutable) {
+        generator::fatal_error(std::chrono::high_resolution_clock::now(),
+                               "Cannot modify variable",
+                               "Cannot modify the value of the variable '" +
+                                   identifier + "' because it is immutable");
+        return nullptr;
+    }
+
     // load the value
     llvm::Value* loadedValue =
         builder->CreateLoad(allocationData->allocaInst->getAllocatedType(),
                             allocationData->allocaInst, identifier.c_str());
 
     llvm::Type* loadedValueType = loadedValue->getType();
-    bool isIntegerType = loadedValueType->isIntegerTy();
-    bool isFloatingPointType = loadedValueType->isFloatingPointTy();
+    bool isIntegerType = allocationData->type.isIntegerType();
+    bool isFloatingPointType = allocationData->type.isFloatingPointType();
     if (!isIntegerType && !isFloatingPointType) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
@@ -319,7 +325,6 @@ std::unique_ptr<CodegenResult> ASTAddressOfOperator::codegen(
     const std::unique_ptr<llvm::LLVMContext>& ctx,
     const std::unique_ptr<llvm::IRBuilder<>>& builder,
     const std::unique_ptr<llvm::Module>& moduleLLVM) const {
-    // get the alloca instance
     scopes::AllocationData* allocationData =
         scopes::getAllocationData(identifier);
     if (allocationData == nullptr) {
@@ -329,8 +334,10 @@ std::unique_ptr<CodegenResult> ASTAddressOfOperator::codegen(
                 "', because it could not be found");
         return nullptr;
     }
+
     return std::make_unique<CodegenResult>(
-        allocationData->allocaInst, allocationData->type.createPointerType(),
+        allocationData->allocaInst,
+        allocationData->type.createPointerType(isMutable),
         R_VALUE_CODEGEN_RESULT);
 }
 
@@ -356,11 +363,14 @@ std::unique_ptr<CodegenResult> ASTDereferenceOperator::codegen(
                                "Cannot dereference a non pointer value");
         return nullptr;
     }
+
     typeSystem::Type elementType = expressionResult->getType().getElementType();
     return std::make_unique<CodegenResult>(
         builder->CreateLoad(elementType.toLLVMType(builder),
                             expressionResult->getValue(), "tmpderef"),
-        elementType, expressionResult->getValue(), L_VALUE_CODEGEN_RESULT);
+        elementType, expressionResult->getValue(),
+        expressionResult->getType().isMutablePointerType(),
+        L_VALUE_CODEGEN_RESULT);
 }
 
 std::unique_ptr<CodegenResult>
@@ -368,7 +378,7 @@ ASTParameter::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
                       const std::unique_ptr<llvm::IRBuilder<>>& builder,
                       const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     return std::make_unique<CodegenResult>(
-        ParamCodegenResult(identifier, typeSystem::Type{type}),
+        ParamCodegenResult(identifier, typeSystem::Type{type}, isMutable),
         PARAM_CODEGEN_RESULT);
 }
 
@@ -376,8 +386,12 @@ std::unique_ptr<CodegenResult> ASTFunctionPrototype::codegen(
     const std::unique_ptr<llvm::LLVMContext>& ctx,
     const std::unique_ptr<llvm::IRBuilder<>>& builder,
     const std::unique_ptr<llvm::Module>& moduleLLVM) const {
+    // set this to be the current function
+    scopes::CurrentFunction::set(identifier);
+
     std::vector<std::string> paramNames;
     std::vector<typeSystem::Type> paramTypes;
+    std::vector<bool> paramMutability;
     std::vector<llvm::Type*> llvmParamTypes;
 
     // generate the parameters
@@ -400,6 +414,7 @@ std::unique_ptr<CodegenResult> ASTFunctionPrototype::codegen(
         }
         paramNames.push_back(parameterResult->param.identifier);
         paramTypes.push_back(parameterResult->param.type);
+        paramMutability.push_back(parameterResult->param.isMutable);
         llvmParamTypes.push_back(
             parameterResult->param.type.toLLVMType(builder));
     }
@@ -417,8 +432,8 @@ std::unique_ptr<CodegenResult> ASTFunctionPrototype::codegen(
     typeSystem::Type type = identifier == "main" ? typeSystem::Type{"i32"}
                                                  : typeSystem::Type{returnType};
     llvm::Type* llvmReturnType = type.toLLVMType(builder);
-    // store the type of the function
-    scopes::setFunctionType(identifier, type);
+    // store the return type and parameter types of the function
+    scopes::setFunctionData(identifier, type, paramTypes);
 
     // return type, parameters, varargs
     llvm::FunctionType* fnType =
@@ -438,7 +453,8 @@ std::unique_ptr<CodegenResult> ASTFunctionPrototype::codegen(
         llvm::AllocaInst* allocaInst =
             scopes::createEntryBlockAlloca(fn, paramNames[i], arg.getType());
         builder->CreateStore(&arg, allocaInst);
-        scopes::setAllocationData(paramNames[i], allocaInst, paramTypes[i]);
+        scopes::setAllocationData(paramNames[i], allocaInst, paramTypes[i],
+                                  paramMutability[i]);
         // update the iterator
         i++;
     }
@@ -461,24 +477,24 @@ std::unique_ptr<CodegenResult> ASTFunctionDefinition::codegen(
         prototypeResult->resultType != FUNCTION_CODEGEN_RESULT)
         return nullptr;
 
-    llvm::Function* fn = prototypeResult->fn;
-
     // codegen the body, and ignore the return value
     (void)body->codegen(ctx, builder, moduleLLVM);
 
     // check if the function is the main function
-    bool isMainFunction = fn->getName() == llvm::StringRef("main");
+    bool isMainFunction = scopes::CurrentFunction::get() == "main";
 
     // if the function has a non-void return type (ignore all of this if it is
     // the main function) then check if the function has a return statement
     llvm::Instruction* fnTerminator =
         builder->GetInsertBlock()->getTerminator();
-    if (!isMainFunction && fn->getReturnType() != builder->getVoidTy() &&
+    if (!isMainFunction &&
+        !scopes::getFunctionData(scopes::CurrentFunction::get())
+             ->returnType.isVoidType() &&
         (fnTerminator == nullptr || !isa<llvm::ReturnInst>(fnTerminator))) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Missing return statement in function",
-            "The function '" + std::string(fn->getName()) +
+            "The function '" + scopes::CurrentFunction::get() +
                 "' has a non-void return type but does not have a return "
                 "statement for each possible branch of execution");
         return nullptr;
@@ -530,8 +546,8 @@ ASTWhileLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition =
-        typeSystem::getBooleanValue(expressionResult->getValue(), builder);
+    llvm::Value* condition = typeSystem::getBooleanValue(
+        expressionResult->getValue(), expressionResult->getType(), builder);
     // generate the condition
     builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
@@ -594,8 +610,8 @@ ASTForLoop::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition =
-        typeSystem::getBooleanValue(expressionResult->getValue(), builder);
+    llvm::Value* condition = typeSystem::getBooleanValue(
+        expressionResult->getValue(), expressionResult->getType(), builder);
     // generate the condition
     builder->CreateCondBr(condition, loopBlock, mergeBlock);
 
@@ -632,7 +648,7 @@ std::unique_ptr<CodegenResult> ASTReturnStatement::codegen(
     const std::unique_ptr<llvm::LLVMContext>& ctx,
     const std::unique_ptr<llvm::IRBuilder<>>& builder,
     const std::unique_ptr<llvm::Module>& moduleLLVM) const {
-    llvm::Type* returnType;
+    typeSystem::Type returnType;
     if (expression != nullptr) {
         std::unique_ptr<CodegenResult> expressionResult =
             expression->codegen(ctx, builder, moduleLLVM);
@@ -645,22 +661,22 @@ std::unique_ptr<CodegenResult> ASTReturnStatement::codegen(
             return nullptr;
         }
         builder->CreateRet(expressionResult->getValue());
-        returnType = expressionResult->getValue()->getType();
+        returnType = expressionResult->getType();
     } else {
         // if the return statement has no expression then generate a void return
         builder->CreateRetVoid();
-        returnType = builder->getVoidTy();
+        returnType = typeSystem::Type{""};
     }
 
     // check if the types match
-    if (returnType != builder->GetInsertBlock()->getParent()->getReturnType()) {
+    if (returnType !=
+        scopes::getFunctionData(scopes::CurrentFunction::get())->returnType) {
         generator::fatal_error(
             std::chrono::high_resolution_clock::now(),
             "Type mismatch in return statement",
             "The type of the return statement does not match the return type "
             "of the parent function '" +
-                std::string(builder->GetInsertBlock()->getParent()->getName()) +
-                "'");
+                scopes::CurrentFunction::get() + "'");
         return nullptr;
     }
 
@@ -722,7 +738,8 @@ std::unique_ptr<CodegenResult> ASTVariableDeclaration::codegen(
     llvm::AllocaInst* allocaInst = scopes::createEntryBlockAlloca(
         builder->GetInsertBlock()->getParent(), identifier,
         typeSystem::Type{type}.toLLVMType(builder));
-    scopes::setAllocationData(identifier, allocaInst, typeSystem::Type{type});
+    scopes::setAllocationData(identifier, allocaInst, typeSystem::Type{type},
+                              isMutable);
     return nullptr;
 }
 
@@ -734,11 +751,9 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
         leftExpression->codegen(ctx, builder, moduleLLVM);
     std::unique_ptr<CodegenResult> rightExpressionResult =
         rightExpression->codegen(ctx, builder, moduleLLVM);
-    llvm::Value* pointer = leftExpressionResult->getPointer();
 
     if (leftExpressionResult == nullptr ||
-        !leftExpressionResult->isValueCodegenResultType() ||
-        pointer == nullptr) {
+        !leftExpressionResult->isValueCodegenResultType()) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Invalid left hand side in variable assignment",
                                "The left hand side of the variable assignment "
@@ -753,6 +768,15 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
             "The expression in the variable assignment has an invalid value");
         return nullptr;
     }
+
+    if (!leftExpressionResult->isMutable()) {
+        generator::fatal_error(
+            std::chrono::high_resolution_clock::now(),
+            "Invalid variable assignment",
+            "Cannot assign a value, because it is immutable");
+        return nullptr;
+    }
+
     // check if the types match
     if (leftExpressionResult->getType() != rightExpressionResult->getType()) {
         generator::fatal_error(
@@ -770,15 +794,18 @@ std::unique_ptr<CodegenResult> ASTVariableAssignment::codegen(
         resultValue = rightExpressionResult->getValue();
         resultType = rightExpressionResult->getType();
     } else {
-        resultValue = typeSystem::createBinaryOperation(
-            leftExpressionResult->getValue(), rightExpressionResult->getValue(),
-            operation, builder);
-        resultType = typeSystem::getResultTypeFromBinaryOperation(
-            leftExpressionResult->getType(), rightExpressionResult->getType(),
-            operation);
+        // get the resulting value and type
+        auto [resultValueTemp, resultTypeTemp] =
+            typeSystem::createBinaryOperation(leftExpressionResult->getValue(),
+                                              rightExpressionResult->getValue(),
+                                              leftExpressionResult->getType(),
+                                              rightExpressionResult->getType(),
+                                              operation, builder);
+        resultValue = resultValueTemp;
+        resultType = resultTypeTemp;
     }
     // store the value of the expression
-    builder->CreateStore(resultValue, pointer);
+    builder->CreateStore(resultValue, leftExpressionResult->getPointer());
     return std::make_unique<CodegenResult>(resultValue, resultType,
                                            R_VALUE_CODEGEN_RESULT);
 }
@@ -794,8 +821,10 @@ std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
                                    "' since it is already declared");
         return nullptr;
     }
+
     std::unique_ptr<CodegenResult> expressionResult =
         expression->codegen(ctx, builder, moduleLLVM);
+
     if (expressionResult == nullptr ||
         !expressionResult->isValueCodegenResultType()) {
         generator::fatal_error(
@@ -805,21 +834,21 @@ std::unique_ptr<CodegenResult> ASTVariableDefinition::codegen(
                 identifier + "' has an invalid value");
         return nullptr;
     }
+
     // find the resulting type of the definition
-    llvm::Type* resultingType =
-        type == "auto" ? expressionResult->getValue()->getType()
-                       : typeSystem::Type{type}.toLLVMType(builder);
+    typeSystem::Type resultingType =
+        type == "auto" ? expressionResult->getType() : typeSystem::Type{type};
     // if the type is not auto, then cast from the expression type to the type
     llvm::Value* resultingValue =
         type == "auto" ? expressionResult->getValue()
                        : typeSystem::createCast(expressionResult->getValue(),
+                                                expressionResult->getType(),
                                                 resultingType, builder);
     // allocate space for the variable and store the value of the expression
     llvm::AllocaInst* allocaInst = scopes::createEntryBlockAlloca(
-        builder->GetInsertBlock()->getParent(), identifier, resultingType);
-    scopes::setAllocationData(identifier, allocaInst,
-                              type == "auto" ? expressionResult->getType()
-                                             : typeSystem::Type{type});
+        builder->GetInsertBlock()->getParent(), identifier,
+        resultingType.toLLVMType(builder));
+    scopes::setAllocationData(identifier, allocaInst, resultingType, isMutable);
     builder->CreateStore(resultingValue, allocaInst);
     return nullptr;
 }
@@ -840,8 +869,8 @@ ASTIfStatement::codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
     }
 
     // get the boolean value of the expression
-    llvm::Value* condition =
-        typeSystem::getBooleanValue(expressionResult->getValue(), builder);
+    llvm::Value* condition = typeSystem::getBooleanValue(
+        expressionResult->getValue(), expressionResult->getType(), builder);
 
     // create the branches
     llvm::Function* fn = builder->GetInsertBlock()->getParent();
@@ -884,8 +913,8 @@ std::unique_ptr<CodegenResult> ASTIfElseStatement::codegen(
         return nullptr;
     }
     // get the boolean value of the expression
-    llvm::Value* condition =
-        typeSystem::getBooleanValue(expressionResult->getValue(), builder);
+    llvm::Value* condition = typeSystem::getBooleanValue(
+        expressionResult->getValue(), expressionResult->getType(), builder);
 
     // create the branches
     llvm::Function* fn = builder->GetInsertBlock()->getParent();
@@ -939,9 +968,9 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
     const std::unique_ptr<llvm::IRBuilder<>>& builder,
     const std::unique_ptr<llvm::Module>& moduleLLVM) const {
     llvm::Function* calleeFn = moduleLLVM->getFunction(identifier);
-    typeSystem::Type* functionType = scopes::getFunctionType(identifier);
+    scopes::FunctionData* functionData = scopes::getFunctionData(identifier);
     // check if the function is defined
-    if (calleeFn == nullptr || functionType == nullptr) {
+    if (calleeFn == nullptr || functionData == nullptr) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                "Unknown function referenced",
                                "The function '" + identifier +
@@ -950,12 +979,12 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
     }
 
     // get the number of parameters (including if it has a vararg)
-    unsigned numParams = calleeFn->getFunctionType()->getNumParams();
+    unsigned numParams = functionData->parameterTypes.size();
     // check if the arguments length equals the amount of parameters, or it is
     // greater than the amount of parameters if the function has varargs
     bool argumentsLengthMatches =
         argumentList.size() == numParams ||
-        (calleeFn->isVarArg() && argumentList.size() >= numParams);
+        (functionData->isVarArg && argumentList.size() >= numParams);
     // check if they don't match
     if (!argumentsLengthMatches) {
         generator::fatal_error(std::chrono::high_resolution_clock::now(),
@@ -967,7 +996,7 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
     }
 
     // get the number of fixed parameters (all parameters except varargs)
-    unsigned numFixedParams = numParams - (calleeFn->isVarArg() ? 1 : 0);
+    unsigned numFixedParams = numParams - (functionData->isVarArg ? 1 : 0);
 
     // generate the arguments
     std::vector<llvm::Value*> args;
@@ -980,15 +1009,14 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
             generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                    "Invalid function argument",
                                    "The " + std::to_string(i + 1) +
-                                       "'th argument of the function '" +
+                                       "'the argument of the function '" +
                                        identifier + "' has an invalid value");
             return nullptr;
         }
 
         // check if the argument type match the parameter type
         if (i <= numFixedParams &&
-            argumentResult->getValue()->getType() !=
-                calleeFn->getFunctionType()->getParamType(i)) {
+            argumentResult->getType() != functionData->parameterTypes[i]) {
             generator::fatal_error(std::chrono::high_resolution_clock::now(),
                                    "Incorrect arguments passed",
                                    "The argument types do not match the "
@@ -1001,12 +1029,12 @@ std::unique_ptr<CodegenResult> ASTFunctionCall::codegen(
     }
     // if the function has a void return type then just return nullptr else
     // return the call result
-    if (calleeFn->getFunctionType()->getReturnType() == builder->getVoidTy()) {
+    if (functionData->returnType.isVoidType()) {
         builder->CreateCall(calleeFn, args);
         return nullptr;
     }
 
     return std::make_unique<CodegenResult>(
-        builder->CreateCall(calleeFn, args, "calltmp"), *functionType,
-        R_VALUE_CODEGEN_RESULT);
+        builder->CreateCall(calleeFn, args, "calltmp"),
+        functionData->returnType, R_VALUE_CODEGEN_RESULT);
 }

@@ -1,6 +1,6 @@
 fn main() {
-    x: i32 = 15;
-    y: i32* = &x;
+    mut x: i32 = 15;
+    y: *mut i32 = &mut x;
     z: i32 = *y;
     printf("z: %d\n", z);
     x = 30;

@@ -1,11 +1,11 @@
-fn sum(x: i32, y: i32) -> i32 {
+fn sum(mut x: i32, y: i32) -> i32 {
     x = x * 2;
     ret x + y;
 }
 
 fn main() {
     foo: i32 = 10;
-    bar: i32;
+    mut bar: i32;
     bar = 20;
     baz := bar + foo;
     printf("%d", sum(foo, baz));

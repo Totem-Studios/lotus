@@ -27,25 +27,51 @@ static llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* fn,
     return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
 }
 
+struct FunctionData {
+    typeSystem::Type returnType;
+    std::vector<typeSystem::Type> parameterTypes;
+    bool isVarArg{};
+};
+
 // to store function types to use in for example function calls
-static std::map<std::string, typeSystem::Type> functionTypes;
+static std::map<std::string, FunctionData> functionTypes;
 
 // helper function to get the type from a function
-static typeSystem::Type* getFunctionType(const std::string& identifier) {
+static FunctionData* getFunctionData(const std::string& identifier) {
     if (functionTypes.contains(identifier))
         return &functionTypes[identifier];
     return nullptr;
 }
 
 // helper function to store the type for a function
-static void setFunctionType(const std::string& identifier,
-                            const typeSystem::Type& type) {
-    functionTypes[identifier] = type;
+static void setFunctionData(const std::string& identifier,
+                            const typeSystem::Type& returnType,
+                            const std::vector<typeSystem::Type>& parameterTypes,
+                            bool isVarArg = false) {
+    functionTypes[identifier] = {returnType, parameterTypes, isVarArg};
 }
+
+// helper class to get and set the current function (as a string)
+class CurrentFunction {
+ private:
+    std::string currentFunction;
+    static CurrentFunction& instance() {
+        static CurrentFunction instance;
+        return instance;
+    }
+    CurrentFunction() = default;
+
+ public:
+    static const std::string& get() { return instance().currentFunction; }
+    static void set(const std::string& function) {
+        instance().currentFunction = function;
+    }
+};
 
 struct AllocationData {
     llvm::AllocaInst* allocaInst{};
     typeSystem::Type type;
+    bool isMutable{};
 };
 
 // to keep track of the variables that are available in the current
@@ -67,10 +93,10 @@ static AllocationData* getAllocationData(const std::string& identifier) {
 // helper function to set a variable in the scopeStack
 static void setAllocationData(const std::string& identifier,
                               llvm::AllocaInst* allocaInst,
-                              const typeSystem::Type& type) {
+                              const typeSystem::Type& type, bool isMutable) {
     if (scopeStack.empty())
         scopeStack.emplace_back();
-    scopeStack.back()[identifier] = {allocaInst, type};
+    scopeStack.back()[identifier] = {allocaInst, type, isMutable};
 }
 
 static void clearScopes() { scopeStack.clear(); }

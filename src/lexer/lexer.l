@@ -10,7 +10,7 @@
 
 #include "../diagnostics/lexer.h"
 
-uint64_t parseInt(const char *str) {
+uint64_t parseInt(const char* str) {
     try {
         return std::stoull(str);
     } catch (const std::out_of_range& e) {
@@ -23,7 +23,7 @@ uint64_t parseInt(const char *str) {
 %option yylineno
 
 /* Regex */
-type (?:\*|\*mut[ ])*(?:bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|str)|auto
+type (?:\*|\*mut[ ])*\[*(?:\*|\*mut[ ])*(?:bool|i8|u8|i16|u16|i32|u32|i64|u64|isize|usize|f32|f64|char|str)(?:\|[0-9]+\])*|auto
 identifier [A-Za-z_]+[0-9]*
 character '[^']'
 /* a string but with single quotes (to handle errors) */
@@ -71,6 +71,7 @@ or or|\|\|
 "*=" {return TOK_ASTERISK_EQUALS;}
 "/=" {return TOK_F_SLASH_EQUALS;}
 "%=" {return TOK_PERCENT_EQUALS;}
+":=" {return TOK_WALRUS;}
 "+" {return TOK_PLUS;}
 "-" {return TOK_HYPHEN;}
 "*" {return TOK_ASTERISK;}
@@ -80,6 +81,8 @@ or or|\|\|
 ")" {return TOK_R_PAREN;}
 "{" {return TOK_L_BRACE;}
 "}" {return TOK_R_BRACE;}
+"[" {return TOK_L_BRACKET;}
+"]" {return TOK_R_BRACKET;}
 ";" {return TOK_SEMICOLON;}
 ":" {return TOK_COLON;}
 "," {return TOK_COMMA;}

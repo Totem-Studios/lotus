@@ -58,18 +58,17 @@ struct CodegenResult {
     CodegenResultType resultType;
 
     // create an rValue with a value and type only
-    CodegenResult(llvm::Value* value, const typeSystem::Type& type,
-                  CodegenResultType resultType)
-        : rValue(value, type), resultType(resultType) {}
+    CodegenResult(llvm::Value* value, const typeSystem::Type& type)
+        : rValue(value, type), resultType(R_VALUE_CODEGEN_RESULT) {}
     // create an lValue with a value, type, pointer and isMutable
     CodegenResult(llvm::Value* value, const typeSystem::Type& type,
-                  llvm::Value* pointer, bool isMutable,
-                  CodegenResultType resultType)
-        : lValue(value, type, pointer, isMutable), resultType(resultType) {}
-    CodegenResult(const ParamCodegenResult& param, CodegenResultType resultType)
-        : param(param), resultType(resultType) {}
-    CodegenResult(llvm::Function* fn, CodegenResultType resultType)
-        : fn(fn), resultType(resultType) {}
+                  llvm::Value* pointer, bool isMutable)
+        : lValue(value, type, pointer, isMutable),
+          resultType(L_VALUE_CODEGEN_RESULT) {}
+    explicit CodegenResult(const ParamCodegenResult& param)
+        : param(param), resultType(PARAM_CODEGEN_RESULT) {}
+    explicit CodegenResult(llvm::Function* fn)
+        : fn(fn), resultType(FUNCTION_CODEGEN_RESULT) {}
 
     ~CodegenResult() {}
 
@@ -135,7 +134,7 @@ class AST {
     }
 
     void print() const {
-        // print each node the vector
+        // print each node in the vector
         for (ASTNode* node : rootNodes) {
             node->print(0);
         }
@@ -153,6 +152,13 @@ class AST {
         for (ASTNode* node : rootNodes) {
             // no need to use the return value, for they are top level nodes...
             (void)node->codegen(ctx, builder, moduleLLVM);
+        }
+
+        // error if the main function is not present
+        if (scopes::getFunctionData("main") == nullptr) {
+            generator::fatal_error(std::chrono::high_resolution_clock::now(),
+                                   "Missing main function",
+                                   "The program must contain a main function");
         }
     }
 };
@@ -297,7 +303,7 @@ class ASTCompoundStatement : public ASTNode {
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Compound Statement:\n";
-        // print each node the vector
+        // print each node in the vector
         for (ASTNode* statement : statementList) {
             statement->print(depth + 1);
         }
@@ -408,10 +414,35 @@ class ASTDereferenceOperator : public ASTNode {
  public:
     explicit ASTDereferenceOperator(ASTNode* expression)
         : expression(expression) {}
+    ~ASTDereferenceOperator() override { delete expression; }
 
     void print(int depth) const override {
         std::cout << std::string(depth * 2, ' ') << "Dereference Operator:\n";
         expression->print(depth + 1);
+    }
+
+    [[nodiscard]] std::unique_ptr<CodegenResult>
+    codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
+            const std::unique_ptr<llvm::IRBuilder<>>& builder,
+            const std::unique_ptr<llvm::Module>& moduleLLVM) const override;
+};
+
+class ASTArrayIndex : public ASTNode {
+    ASTNode* array;
+    ASTNode* index;
+
+ public:
+    explicit ASTArrayIndex(ASTNode* array, ASTNode* index)
+        : array(array), index(index) {}
+    ~ASTArrayIndex() override {
+        delete array;
+        delete index;
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Array Index:\n";
+        array->print(depth + 1);
+        index->print(depth + 1);
     }
 
     [[nodiscard]] std::unique_ptr<CodegenResult>
@@ -454,7 +485,7 @@ class ASTFunctionPrototype : public ASTNode {
  public:
     ASTFunctionPrototype(std::string identifier,
                          std::vector<ASTNode*> parameterList,
-                         std::string returnType)
+                         std::string returnType = "")
         : identifier(std::move(identifier)),
           parameterList(std::move(parameterList)),
           returnType(std::move(returnType)) {}
@@ -471,7 +502,7 @@ class ASTFunctionPrototype : public ASTNode {
                   << "Identifier: " << identifier << "\n";
         if (!parameterList.empty()) {
             std::cout << std::string((depth + 1) * 2, ' ') << "Parameters:\n";
-            // print each node the vector
+            // print each node in the vector
             for (ASTNode* parameter : parameterList) {
                 parameter->print((depth + 1) + 1);
             }
@@ -658,7 +689,7 @@ class ASTVariableAssignment : public ASTNode {
 
  public:
     ASTVariableAssignment(ASTNode* leftExpression, ASTNode* rightExpression,
-                          std::string operation)
+                          std::string operation = "")
         : leftExpression(leftExpression), rightExpression(rightExpression),
           operation(std::move(operation)) {}
     ~ASTVariableAssignment() override {
@@ -785,12 +816,54 @@ class ASTFunctionCall : public ASTNode {
                   << "Identifier: " << identifier << "\n";
         if (!argumentList.empty()) {
             std::cout << std::string((depth + 1) * 2, ' ') << "Arguments\n";
-            // print each node the vector
+            // print each node in the vector
             for (ASTNode* argument : argumentList) {
                 argument->print(depth + 2);
             }
         } else {
             std::cout << std::string((depth + 1) * 2, ' ') << "No Arguments\n";
+        }
+    }
+
+    [[nodiscard]] std::unique_ptr<CodegenResult>
+    codegen(const std::unique_ptr<llvm::LLVMContext>& ctx,
+            const std::unique_ptr<llvm::IRBuilder<>>& builder,
+            const std::unique_ptr<llvm::Module>& moduleLLVM) const override;
+};
+
+class ASTArrayInitList : public ASTNode {
+    std::vector<ASTNode*> elementList;
+    std::string type;
+
+ public:
+    explicit ASTArrayInitList(std::vector<ASTNode*> elementList,
+                              std::string type = "")
+        : elementList(std::move(elementList)), type(std::move(type)) {}
+    ~ASTArrayInitList() override {
+        // delete each node the vector
+        for (ASTNode* element : elementList) {
+            delete element;
+        }
+    }
+
+    void print(int depth) const override {
+        std::cout << std::string(depth * 2, ' ') << "Array Init List:\n";
+        // print the elements
+        if (!elementList.empty()) {
+            std::cout << std::string((depth + 1) * 2, ' ') << "Elements\n";
+            // print each node in the vector
+            for (ASTNode* element : elementList) {
+                element->print(depth + 2);
+            }
+        } else {
+            std::cout << std::string((depth + 1) * 2, ' ') << "No Elements\n";
+        }
+        // print the type
+        if (!type.empty()) {
+            std::cout << std::string((depth + 1) * 2, ' ') << "Type: " << type
+                      << "\n";
+        } else {
+            std::cout << std::string((depth + 1) * 2, ' ') << "No Type\n";
         }
     }
 

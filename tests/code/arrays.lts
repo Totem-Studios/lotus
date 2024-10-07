@@ -1,0 +1,74 @@
+fn modifyArray(array: *mut [i32|10], index: i8, newValue: i32) {
+    (*array)[index] = newValue;
+}
+
+fn printArrayI32(array: [i32|10]) {
+    printf("[");
+    for mut i := 0; i < 10; i++ {
+        if i < 9: printf("%d, ", array[i]);
+        else printf("%d]\n", array[i]);
+    }
+}
+
+fn castArrayToF64(array: [i32|10]) -> [f64|10] {
+    mut newArray: [f64|10];
+    for mut i := 0; i < 10; i++ {
+        newArray[i] = array[i] as f64;
+    }
+    ret newArray;
+}
+
+fn printArrayF64(array: [f64|10]) {
+    printf("[");
+    for mut i := 0; i < 10; i++ {
+        if i < 9: printf("%f, ", array[i]);
+        else printf("%f]\n", array[i]);
+    }
+}
+
+fn testAssignmentsAsLValues() {
+    mut x: [i32|10] = [1, 2, 3, 4, 5, 6, 7, 8, 9, 0];
+    mut y: [i32|10];
+    (y = x)[5] = 100;
+    printf("x: %d\n", x[5]);
+
+    mut a := 10;
+    mut b: i32;
+    (b = a) = 15;
+    printf("a: %d, b: %d\n", a, b);
+}
+
+fn main() {
+    mut x := [2, 3, 4, 5, 23, 4, 56, 7, 3, 2];
+    printArrayI32(x);
+    modifyArray(&mut x, 4~i8, 100);
+    printArrayI32(x);
+
+    y: [f64|10] = castArrayToF64(x);
+    printArrayF64(y);
+
+    mut z: [i32|10] = i32[1, 2, 3, 4, 5, 6.7, 'a', 9, 2, -3];
+    z[6] = 42;
+    for mut i := 0; i < 10; i++ {
+        printf("Array at %d: %d\n", i, z[i]);
+    }
+
+    testAssignmentsAsLValues();
+}
+
+// output:
+// [2, 3, 4, 5, 23, 4, 56, 7, 3, 2]
+// [2, 3, 4, 5, 100, 4, 56, 7, 3, 2]
+// [2.000000, 3.000000, 4.000000, 5.000000, 100.000000, 4.000000, 56.000000, 7.000000, 3.000000, 2.000000]
+// Array at 0: 1
+// Array at 1: 2
+// Array at 2: 3
+// Array at 3: 4
+// Array at 4: 5
+// Array at 5: 6
+// Array at 6: 42
+// Array at 7: 9
+// Array at 8: 2
+// Array at 9: -3
+// x: 100
+// a: 15, b: 10

@@ -50,6 +50,7 @@ add_executable(Lotus src/main.cpp
         ${BISON_Parser_OUTPUTS}
         ${FLEX_Lexer_OUTPUTS}
         src/generator/typeSystem.h
+        src/generator/casting.h
 )
 
 # Ensures that llvm links against the correct libraries

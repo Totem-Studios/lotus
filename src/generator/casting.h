@@ -25,10 +25,10 @@ namespace casting {
 // helper function to create a llvm cast instruction
 static llvm::Value*
 createCast(llvm::Value* value, const typeSystem::Type& sourceType,
-           const typeSystem::Type& destinationType,
-           const std::unique_ptr<llvm::IRBuilder<>>& builder,
-           // an optional pointer to the value (used when casting arrays)
-           llvm::Value* pointer = nullptr) {
+const typeSystem::Type& destinationType,
+const std::unique_ptr<llvm::IRBuilder<>>& builder,
+// an optional pointer to the value (used when casting arrays)
+llvm::Value* pointer = nullptr) {
     if (sourceType == destinationType) {
         // no cast needed
         return value;
@@ -80,17 +80,17 @@ createCast(llvm::Value* value, const typeSystem::Type& sourceType,
 // helper function for getting the boolean representation of a llvm::Value*
 static llvm::Value*
 toBoolean(llvm::Value* value, const typeSystem::Type& sourceType,
-          const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+const std::unique_ptr<llvm::IRBuilder<>>& builder) {
     return createCast(value, sourceType, typeSystem::Type{"bool"}, builder);
 }
 
 // helper function to create binary operations
 static std::tuple<llvm::Value*, typeSystem::Type>
 createBinaryOperation(llvm::Value* leftValue, llvm::Value* rightValue,
-                      const typeSystem::Type& leftType,
-                      const typeSystem::Type& rightType,
-                      const std::string& operation,
-                      const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+const typeSystem::Type& leftType,
+const typeSystem::Type& rightType,
+const std::string& operation,
+const std::unique_ptr<llvm::IRBuilder<>>& builder) {
     // these can be performed with different types because both sides are cast
     // to booleans
     if (operation == "&&") {

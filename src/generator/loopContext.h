@@ -30,14 +30,14 @@ struct LoopContext {
 static std::vector<LoopContext> loopContexts;
 
 static void startForLoop(ASTNode* updateStatement,
-                         llvm::BasicBlock* conditionalBlock,
-                         llvm::BasicBlock* mergeBlock) {
+llvm::BasicBlock* conditionalBlock,
+llvm::BasicBlock* mergeBlock) {
     // save loop information for potential continue and break
     loopContexts.emplace_back(updateStatement, conditionalBlock, mergeBlock);
 }
 
 static void startWhileLoop(llvm::BasicBlock* conditionalBlock,
-                           llvm::BasicBlock* mergeBlock) {
+llvm::BasicBlock* mergeBlock) {
     // save loop information for potential continue and break
     loopContexts.emplace_back(nullptr, conditionalBlock, mergeBlock);
 }

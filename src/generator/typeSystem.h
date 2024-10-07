@@ -130,7 +130,7 @@ struct Type {
 // helper function to get the llvm::Value* from an integer (since it might vary
 // in bit-width)
 static Type getIntegerType(uint64_t number,
-                           const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+const std::unique_ptr<llvm::IRBuilder<>>& builder) {
     if (number <= 2147483647) {
         // limit for signed i32
         return Type{"i32"};
@@ -150,7 +150,7 @@ static Type getIntegerType(uint64_t number,
 // in bit-width)
 static llvm::Value*
 getIntegerValue(uint64_t number,
-                const std::unique_ptr<llvm::IRBuilder<>>& builder) {
+const std::unique_ptr<llvm::IRBuilder<>>& builder) {
     if (number <= 2147483647) {
         // limit for signed i32
         return builder->getInt32(number);

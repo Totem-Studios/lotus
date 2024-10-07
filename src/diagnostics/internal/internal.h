@@ -9,8 +9,8 @@
 namespace internal {
 static std::string
 fatal_error(const std::chrono::high_resolution_clock::time_point& time,
-            std::string header, const std::string& description,
-            const std::string& desc_var = "") {
+std::string header, const std::string& description,
+const std::string& desc_var = "") {
     std::string time_spacing =
         std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::high_resolution_clock::now() - time)
@@ -31,8 +31,8 @@ fatal_error(const std::chrono::high_resolution_clock::time_point& time,
 
 static std::string
 nonfatal_error(const std::chrono::high_resolution_clock::time_point& time,
-               std::string header, const std::string& description,
-               const std::string& desc_var = "") {
+std::string header, const std::string& description,
+const std::string& desc_var = "") {
     std::string time_spacing =
         std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::high_resolution_clock::now() - time)

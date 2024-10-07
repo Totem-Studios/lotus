@@ -20,8 +20,8 @@ namespace scopes {
 // helper function to create an alloca instruction in the entry block of a
 // function. Used with mutable variables
 static llvm::AllocaInst* createEntryBlockAlloca(llvm::Function* fn,
-                                                const std::string& variableName,
-                                                llvm::Type* type) {
+const std::string& variableName,
+llvm::Type* type) {
     llvm::IRBuilder<> temporaryBuilder(&fn->getEntryBlock(),
                                        fn->getEntryBlock().begin());
     return temporaryBuilder.CreateAlloca(type, nullptr, variableName);
@@ -45,9 +45,9 @@ static FunctionData* getFunctionData(const std::string& identifier) {
 
 // helper function to store the type for a function
 static void setFunctionData(const std::string& identifier,
-                            const typeSystem::Type& returnType,
-                            const std::vector<typeSystem::Type>& parameterTypes,
-                            bool isVarArg = false) {
+const typeSystem::Type& returnType,
+const std::vector<typeSystem::Type>& parameterTypes,
+bool isVarArg = false) {
     functionTypes[identifier] = {returnType, parameterTypes, isVarArg};
 }
 
@@ -92,8 +92,8 @@ static AllocationData* getAllocationData(const std::string& identifier) {
 
 // helper function to set a variable in the scopeStack
 static void setAllocationData(const std::string& identifier,
-                              llvm::AllocaInst* allocaInst,
-                              const typeSystem::Type& type, bool isMutable) {
+llvm::AllocaInst* allocaInst,
+const typeSystem::Type& type, bool isMutable) {
     if (scopeStack.empty())
         scopeStack.emplace_back();
     scopeStack.back()[identifier] = {allocaInst, type, isMutable};

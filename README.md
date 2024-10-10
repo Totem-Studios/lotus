@@ -2,11 +2,11 @@
 
 # Lotus: The power of simplicity
 
-Lotus is a type-safe compiled programming language designed to simplify the syntax of C++ and achieve memory safety using ownership and borrowing.
+Lotus is a type-safe compiled programming language designed to simplify the syntax of C++ while ensuring memory safety through ownership and borrowing.
 
-The syntax of Lotus is mainly C/C++ based however adding new features and "syntactic-sugar". The goal of the language is a more elegant approach to high-demand programming. In other words, Lotus has a bias for systems programming.
+While Lotus syntax draws inspiration from C/C++, python & rust and incorporates modern features to enhance the programming experience, it introduces unique elements and syntactic sugar to provide a more elegant solution for high-demand programming, particularly in systems programming.
 
-This repository contains the original compiler for Lotus. It is not yet finished and offers minimal debugging support with unoptimized binary. It is incomplete, as can be said for the Lotus SDL.
+This repository contains the official compiler for Lotus. Although it is still under development and currently offers minimal debugging support with unoptimized binaries, it represents the foundational work for the Lotus programming language. The compiler is currently incomplete, as can be said for the Lotus SDL.
 
 ## Highlights and roadmap of Lotus
 
@@ -24,7 +24,7 @@ This repository contains the original compiler for Lotus. It is not yet finished
 
 ## Deep-dive into Lotus
 
-To learn more about Lotus, our detailed documentation is the perfect place to start. You can access it on our GitHub page: [Lotus Documentation](https://github.com/Totem-Studios/docs-website).
+To learn more about Lotus, our detailed documentation is the perfect place to start. You can access it on our GitHub page: [Lotus documentation](https://github.com/Totem-Studios/docs-website).
 
 The documentation covers everything from basic syntax and language features to advanced topics. Whether you're a beginner or an experienced developer, you'll find valuable information to help you get the most out of Lotus.
 

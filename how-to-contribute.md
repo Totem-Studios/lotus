@@ -43,7 +43,7 @@ Unsure where to begin contributing? Look for issues tagged `good-first-issue`.
 ### Code Style
 
 - 2 spaces for indentation rather than tabs.
-- You can try running `cpplint <filename>` for c++ files or `lotuslint <filename>` for lotus files for style unification.
+- You can try running `cpplint <filename>` for C++ files or `lotuslint <filename>` for lotus files for style unification.
 
 ## Additional Notes
 

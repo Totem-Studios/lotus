@@ -4,7 +4,7 @@ cmake-build-debug-event-trace/
 cmake-build-release/
 build/
 
-# IDE & Directory files
+# Ignore Visual Studio Code settings
 .vscode/
 
 # Ignore CLion settings
@@ -16,7 +16,7 @@ build/
 *.DS_Store
 Thumbs.db
 
-# Ignore compiled Object files
+# Ignore compiled object files
 *.o
 *.obj
 *.so

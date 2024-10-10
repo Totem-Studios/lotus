@@ -8,10 +8,10 @@ We would like to extend our deepest gratitude to all contributors who have helpe
 
 If you have achieved multiple roles from this list, only one role will be displayed. You may notify us about your preferred role for display; otherwise, we will select one based on your contributions.
 
-- **Founder & Owner**: Responsible for the vision, strategy, and governance of the project.
+- **Founder & owner**: Responsible for the vision, strategy, and governance of the project.
 - **Visioneer**: Acts as the visionary force behind the project, conceptualizing and setting the future direction and goals.
-- **Documentation Master**: Has fixed grammar or other documentation issues in the project at multiple places, proving to be dedicated and a significant contributor.
-- **Technical Writer**: Has created and maintained technical documentation, such as architecture docs or explanations.
+- **Documentation master**: Has fixed grammar or other documentation issues in the project at multiple places, proving to be dedicated and a significant contributor.
+- **Technical writer**: Has created and maintained technical documentation, such as architecture docs or explanations.
 - **Editor**: Reviews and improves existing documentation for clarity and accuracy.
 - **Bug fixer**: Fixed many different bugs in the codebase over a broader timespan.
 - **Developer**: Has helped with the development of the project.

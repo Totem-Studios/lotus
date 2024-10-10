@@ -1,6 +1,6 @@
 # Frequently Asked Questions (FAQ)
 
-## Table of Contents
+## Table of contents
 
 - [General](#general)
   - [What is this project about?](#what-is-this-project-about)
@@ -28,11 +28,11 @@ To get started, you can refer to our documentation repository: [Totem-Studios/do
 
 ### How can I contribute?
 
-You can contribute by submitting pull requests, reporting bugs, or suggesting new features. Please refer to our [Contribution Guide](how-to-contribute.md) for more details.
+You can contribute by submitting pull requests, reporting bugs, or suggesting new features. Please refer to our [Contribution guide](how-to-contribute.md) for more details.
 
 ### What do I need to know before I make a contribution?
 
-Before you make a contribution, please read our [Code of Conduct](CODE_OF_CONDUCT.md) and [Contribution Guide](how-to-contribute.md).
+Before you make a contribution, please read our [Code of conduct](CODE_OF_CONDUCT.md) and [Contribution guide](how-to-contribute.md).
 
 ## Troubleshooting
 
